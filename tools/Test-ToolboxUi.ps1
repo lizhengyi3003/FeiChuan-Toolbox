@@ -1,4 +1,4 @@
-param([int]$ProcessId,[string]$SelectPage,[string]$InvokeName,[string]$InvokeId,[string]$ScreenshotPath,[string]$OutputPath)
+﻿param([int]$ProcessId,[string]$SelectPage,[string]$InvokeName,[string]$InvokeId,[string]$ScreenshotPath,[string]$OutputPath)
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes

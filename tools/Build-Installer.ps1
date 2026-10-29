@@ -1,4 +1,4 @@
-param([string]$CompilerPath,[switch]$Publish,[switch]$Offline,[string]$PublishDirectory)
+﻿param([string]$CompilerPath,[switch]$Publish,[switch]$Offline,[string]$PublishDirectory)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 if($Publish){& (Join-Path $root 'build.ps1') -Publish -Offline:$Offline}

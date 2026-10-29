@@ -1,4 +1,4 @@
-param([string]$InstallerPath)
+﻿param([string]$InstallerPath)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 $cache=Join-Path $root '.tools\inno-build-tools'

@@ -1,4 +1,4 @@
-param([string]$ApplicationFolder='C:\Application',[string]$OutputFolder='C:\TestResults')
+﻿param([string]$ApplicationFolder='C:\Application',[string]$OutputFolder='C:\TestResults')
 $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Path $OutputFolder -Force | Out-Null
 $os=Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'

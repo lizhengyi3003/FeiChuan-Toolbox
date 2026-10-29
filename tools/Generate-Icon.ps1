@@ -1,4 +1,4 @@
-param([string]$OutputDirectory=(Join-Path $PSScriptRoot '..\src\TunHotspot.WinUI\Assets'))
+﻿param([string]$OutputDirectory=(Join-Path $PSScriptRoot '..\src\TunHotspot.WinUI\Assets'))
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Drawing
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null

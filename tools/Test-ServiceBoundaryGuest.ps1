@@ -1,4 +1,4 @@
-param([switch]$RemoveComponent)
+﻿param([switch]$RemoveComponent)
 $ErrorActionPreference='Stop'
 if(-not [Security.Principal.WindowsIdentity]::GetCurrent().IsSystem -or -not(Test-Path 'C:\TestScripts\run.ps1')){throw '只允许隔离沙盒中的 SYSTEM 测试账户。'}
 function Read-Exact($pipe,[int]$count){$bytes=New-Object byte[] $count;$offset=0;while($offset -lt $count){$r=$pipe.ReadAsync($bytes,$offset,$count-$offset);if(-not $r.Wait(10000) -or $r.Result -eq 0){throw 'IPC 读取失败。'};$offset+=$r.Result};return ,$bytes}

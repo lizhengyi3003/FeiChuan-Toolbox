@@ -1,4 +1,4 @@
-param([ValidateSet('Debug','Release')][string]$Configuration='Release',[switch]$Publish,[switch]$Offline,[string]$OutputDirectory)
+﻿param([ValidateSet('Debug','Release')][string]$Configuration='Release',[switch]$Publish,[switch]$Offline,[string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 $localSdk=Join-Path $PSScriptRoot '.tools\dotnet\dotnet.exe'
 $systemDotnet=Get-Command dotnet.exe -ErrorAction SilentlyContinue

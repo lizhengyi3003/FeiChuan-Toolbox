@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$PublishDirectory,[string]$VCRuntimeDirectory)
+﻿param([Parameter(Mandatory=$true)][string]$PublishDirectory,[string]$VCRuntimeDirectory)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 $publish=[IO.Path]::GetFullPath($PublishDirectory)

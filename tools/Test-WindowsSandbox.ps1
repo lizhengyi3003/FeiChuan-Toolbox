@@ -1,4 +1,4 @@
-$ErrorActionPreference='Stop'
+﻿$ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 $publish=Join-Path $root 'artifacts\toolbox-preview'
 $out=Join-Path $root 'artifacts\qa\sandbox-output'

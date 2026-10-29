@@ -1,4 +1,4 @@
-$ErrorActionPreference='Stop'
+﻿$ErrorActionPreference='Stop'
 if($env:USERNAME -ne 'WDAGUtilityAccount' -or -not(Test-Path 'C:\TestScripts\run.ps1')){throw '仅允许项目 Windows Sandbox。'}
 $result=[ordered]@{Time=(Get-Date).ToString('o');Checks=@()}
 $install=Join-Path $env:LOCALAPPDATA 'Toolbox installed QA'

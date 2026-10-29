@@ -1,4 +1,4 @@
-param([string]$ApplicationFolder='C:\Application',[string]$OutputFolder='C:\TestResults')
+﻿param([string]$ApplicationFolder='C:\Application',[string]$OutputFolder='C:\TestResults')
 $ErrorActionPreference='Stop'
 if($env:USERNAME -ne 'WDAGUtilityAccount' -or -not(Test-Path 'C:\TestScripts\run.ps1')){throw '仅在项目 Windows Sandbox 运行。'}
 $result=[ordered]@{Time=(Get-Date).ToString('o');Checks=@()}

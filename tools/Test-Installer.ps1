@@ -1,4 +1,4 @@
-param([string]$SetupPath)
+﻿param([string]$SetupPath)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 if(-not $SetupPath){$SetupPath=(Get-ChildItem "$root\artifacts\installer\*-Setup-x64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName}

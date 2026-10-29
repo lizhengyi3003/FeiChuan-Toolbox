@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$ApplicationPath,[string]$OutputPath)
+﻿param([Parameter(Mandatory=$true)][string]$ApplicationPath,[string]$OutputPath)
 $ErrorActionPreference='Stop'
 if([IO.Path]::GetFileName($ApplicationPath) -ne 'TunHotspot.exe'){throw '仅允许本软件 QA 进程。'}
 Add-Type -AssemblyName UIAutomationClient

@@ -47,7 +47,6 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "*.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#ProjectRoot}\docs\使用说明.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\TUN 热点与启动工具箱"; Filename: "{app}\TunHotspot.exe"; WorkingDir: "{app}"; AppUserModelID: "TunHotspot.WinUI"

@@ -1,4 +1,4 @@
-param([string]$ApplicationFolder='C:\Application',[string]$OutputFolder='C:\TestResults',[switch]$KeepComponent,[switch]$SkipRepeatedStateTest)
+﻿param([string]$ApplicationFolder='C:\Application',[string]$OutputFolder='C:\TestResults',[switch]$KeepComponent,[switch]$SkipRepeatedStateTest)
 $ErrorActionPreference='Stop'
 # This script refuses the host and runs only in the dedicated disposable Sandbox.
 if(-not (Test-Path -LiteralPath 'C:\TestScripts\run.ps1') -or $env:USERNAME -ne 'WDAGUtilityAccount'){throw '仅允许在本项目 Windows Sandbox 测试环境执行。'}
