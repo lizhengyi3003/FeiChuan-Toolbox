@@ -41,8 +41,10 @@ public sealed class ToolboxStore
             CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, time TEXT NOT NULL, data TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS event_time ON events(time);
             CREATE TABLE IF NOT EXISTS pending (id TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS pending_ignore (id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS batches (id TEXT PRIMARY KEY, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS decisions (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS control_history (id TEXT PRIMARY KEY, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS decision_history (id TEXT PRIMARY KEY, entryId TEXT NOT NULL, time TEXT NOT NULL, data TEXT NOT NULL);
             """;
         command.ExecuteNonQuery();
@@ -85,8 +87,30 @@ public sealed class ToolboxStore
     public List<string> Pending => Query("SELECT id FROM pending");
     public List<SnapshotSummary> History => Query("SELECT json_object('id',id,'time',time,'count',json_array_length(data,'$.entries')) FROM snapshots ORDER BY time DESC LIMIT 200").Select(Contract.Decode<SnapshotSummary>).ToList();
     public ScanSnapshot? GetSnapshot(string id) => Query("SELECT data FROM snapshots WHERE id=$id",("$id",id)).Select(Contract.Decode<ScanSnapshot>).FirstOrDefault();
-    public void Enqueue(string id) => Execute("INSERT OR IGNORE INTO pending VALUES($id)", ("$id", id));
-    public void RemovePending(string id) => Execute("DELETE FROM pending WHERE id=$id", ("$id", id));
+    public void Enqueue(string id) => Execute("DELETE FROM pending_ignore WHERE id=$id; INSERT OR IGNORE INTO pending VALUES($id)", ("$id", id));
+    public void RemovePending(string id)
+    {var entry=Latest?.Entries.FirstOrDefault(x=>x.Id==id);if(entry is not null)Execute("INSERT INTO pending_ignore VALUES($id,$fingerprint) ON CONFLICT(id) DO UPDATE SET fingerprint=excluded.fingerprint",("$id",id),("$fingerprint",entry.Fingerprint));Execute("DELETE FROM pending WHERE id=$id",("$id",id));}
+    public List<StartupControlRecord> Controls=>Query("SELECT data FROM control_history").Select(Contract.Decode<StartupControlRecord>).OrderByDescending(x=>x.Created).ToList();
+    public void SaveControl(StartupControlRecord record)=>Execute("INSERT INTO control_history VALUES($id,$data) ON CONFLICT(id) DO UPDATE SET data=excluded.data",("$id",record.Id),("$data",Contract.Encode(record)));
+    public ScanSnapshot? MergeControlEntry(StartupEntry entry)
+    {
+        var snapshot=Latest;if(snapshot is null)return null;snapshot.Id=Guid.NewGuid().ToString("N");
+        snapshot.Entries.RemoveAll(x=>x.Id==entry.Id);snapshot.Entries.Add(entry);
+        snapshot.BootObservation="已合入单项管理员复核结果；其他条目仍对应各自的观察时刻。";
+        SaveSnapshot(snapshot);return snapshot;
+    }
+    public int ReconcilePending(ScanSnapshot? snapshot=null)
+    {
+        snapshot??=Latest;if(snapshot is null)return 0;
+        var decisions=Decisions.ToDictionary(x=>x.EntryId);int added=0;var pending=Pending.ToHashSet();
+        var ignored=Query("SELECT json_object('entryId',id,'text',fingerprint) FROM pending_ignore").Select(Contract.Decode<PersonalNote>).ToDictionary(x=>x.EntryId,x=>x.Text);
+        foreach(var e in snapshot.Entries)
+        {
+            bool valid=decisions.TryGetValue(e.Id,out var decision)&&decision.Fingerprint==e.Fingerprint;
+            if((valid?decision!.Advice:e.Advice)=="待分析"&&(!ignored.TryGetValue(e.Id,out string? fingerprint)||fingerprint!=e.Fingerprint)&&pending.Add(e.Id)){Enqueue(e.Id);added++;}
+        }
+        return added;
+    }
     public void SaveWatch(WatchRule rule)
     {
         if (rule.EntryId.Length != 64 || rule.Expected.Length > 300 || rule.Name.Length > 1024) throw new InvalidDataException("关注规则无效。");
@@ -134,9 +158,7 @@ public sealed class ToolboxStore
             tx.Commit();
         }
         EvaluateWatches(snapshot);
-        var decisions = Decisions.ToDictionary(x => x.EntryId);
-        foreach (var e in snapshot.Entries.Where(x => x.Advice == "待分析" && x.ObservationStatus == "本次读取"))
-            if (!decisions.TryGetValue(e.Id, out var decision) || decision.Fingerprint != e.Fingerprint) Enqueue(e.Id);
+        ReconcilePending(snapshot);
         if (previous is not null && !snapshot.Cancelled)
         {
             var before = previous.Entries.ToDictionary(x => x.Id);
@@ -160,6 +182,7 @@ public sealed class ToolboxStore
         var alerts = Alerts;
         foreach (var rule in Watches)
         {
+            if(snapshot.Started<rule.Created)continue;
             string actual;
             entries.TryGetValue(rule.EntryId, out var current);
             if (current is null)
@@ -204,6 +227,7 @@ public sealed class ToolboxStore
     public AnalysisBatch CreateBatch()
     {
         var snapshot = Latest ?? throw new InvalidOperationException("请先完成扫描。");
+        ReconcilePending(snapshot);
         var selected = Pending.ToHashSet(); var batch = new AnalysisBatch { SnapshotId = snapshot.Id };
         batch.Items = snapshot.Entries.Where(x => selected.Contains(x.Id)).Take(100).Select(x => new AnalysisItem(x.Id, x.Fingerprint, Redact(x))).ToList();
         if (batch.Items.Count == 0) throw new InvalidOperationException("没有可分析条目。请将条目加入待分析区。");

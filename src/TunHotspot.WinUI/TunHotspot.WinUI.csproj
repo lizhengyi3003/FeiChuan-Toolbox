@@ -19,7 +19,7 @@
     <PublishTrimmed>false</PublishTrimmed>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>TUN 热点与启动工具箱</Product>
     <Description>WinUI 3 热点、启动入口扫描与后台运行监测工具箱</Description>
     <ApplicationTitle>TUN 热点与启动工具箱</ApplicationTitle>

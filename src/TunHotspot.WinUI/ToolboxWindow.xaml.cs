@@ -1,4 +1,4 @@
-using Microsoft.UI.Composition.SystemBackdrops;
+﻿using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -27,6 +27,7 @@ public sealed partial class ToolboxWindow : Window
     private readonly DispatcherTimer _poll = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly LiveMonitor _monitor;
     private readonly HotspotPage _hotspot = new();
+    private readonly ScrollViewer _hotspotHost;
     private readonly bool _qa;
     private readonly UISettings _uiSettings = new();
     private readonly AccessibilitySettings _accessibility = new();
@@ -37,9 +38,13 @@ public sealed partial class ToolboxWindow : Window
     private CancellationTokenSource? _adminStop;
     private bool _adminBusy, _polling, _exiting, _serviceConnected, _serviceScanRequested;
     private bool _initialized;
-    private string _page = "overview", _appFilter = "", _materialState = "";
+    private bool _routeWithFilter;
+    private string _page = "overview", _materialState = "",_groupKind="类别";
+    private readonly EntryFilter _entryFilter=new(),_pendingFilter=new();
+    private Action? _refreshEntries;
     private string? _machineSnapshotId;
     private DateTimeOffset _lastAnalysis;
+    private DateTimeOffset _lastControlTime;
     private List<string> _fonts = [];
     private static readonly DataTemplate Rows = (DataTemplate)XamlReader.Load("""
         <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
@@ -52,7 +57,9 @@ public sealed partial class ToolboxWindow : Window
 
     public ToolboxWindow(bool quiet = false, bool qa = false)
     {
-        InitializeComponent(); _qa=qa;_settings = _store.Settings; _snapshot = _store.Latest;
+        InitializeComponent(); _hotspotHost=new ScrollViewer{Content=_hotspot};_qa=qa;_settings = _store.Settings; _snapshot = _store.Latest;
+        _store.ReconcilePending(_snapshot);
+        _lastControlTime=_store.Get<DateTimeOffset>("lastControlTime");
         AttachDecisions();
         if(qa){_settings.Theme="浅色";_settings.Backdrop="None";}
         _monitor = new(_store, Contract.Sid) { Paused = _settings.Paused };
@@ -89,6 +96,7 @@ public sealed partial class ToolboxWindow : Window
         try { _uiSettings.AdvancedEffectsEnabledChanged += (_,_)=>DispatcherQueue.TryEnqueue(ApplyAppearance); } catch(Exception ex) { AppLog.Write("optional-theme-event",new{ex.Message}); }
         try { _accessibility.HighContrastChanged += (_,_)=>DispatcherQueue.TryEnqueue(ApplyAppearance); } catch(Exception ex) { AppLog.Write("optional-accessibility-event",new{ex.Message}); }
         ApplyAppearance(); _initialized = true; Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First();
+        Navigation.ItemInvoked+=(_,args)=>{if(args.InvokedItemContainer is NavigationViewItem item&&item.Tag?.ToString() is string page){if(page=="entries"){_entryFilter.Clear();RenderPage();}else if(page=="pending"){_pendingFilter.Clear();RenderPage();}}};
         _poll.Tick += async (_,_)=>await Poll(); if(!qa){_poll.Start();_monitor.Start();_=Poll();}
         _=LoadFonts();
         if(quiet)DispatcherQueue.TryEnqueue(()=>AppWindow.Hide());
@@ -120,6 +128,36 @@ public sealed partial class ToolboxWindow : Window
     {
         try
         {
+            bool retainSelection=page=="controls-interactive";
+            if(page=="controls-interactive")
+            {
+                await Task.Delay(1000);
+                var target=(_snapshot?.Entries??[]).First(x=>x.Provider=="services"&&ControlPolicy.Reason(x,Contract.Sid).Length==0&&!ControlPolicy.RemoteOrProxy(x));
+                _entryFilter.Search=target.Name;Navigate("entries",true);await Task.Delay(300);
+                ListView? FindList(DependencyObject root)
+                {
+                    if(root is ListView list&&Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(list)=="Entries.List")return list;
+                    for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)if(FindList(VisualTreeHelper.GetChild(root,i)) is ListView found)return found;
+                    return null;
+                }
+                var list=FindList(PageHost)??throw new InvalidOperationException("条目列表尚未加载。");
+                list.SelectedItem=((IEnumerable<StartupEntry>)list.ItemsSource).First(x=>x.Id==target.Id);
+                await Task.Delay(20000);page="entries";
+            }
+            if(page=="filter-regression")
+            {
+                await Task.Delay(500);var single=(_snapshot?.Entries??[]).GroupBy(x=>x.App).OrderBy(x=>x.Count()).First();
+                _entryFilter.App=single.Key;Navigate("entries",true);await Task.Delay(100);
+                var filtered=_entryFilter.Apply(_snapshot!.Entries).Count;
+                Navigate("overview");Navigate("entries");await Task.Delay(100);
+                var all=_entryFilter.Apply(_snapshot.Entries).Count;
+                if(all!=_snapshot.Entries.Count||filtered>all)throw new InvalidOperationException("应用筛选返回全部失败。");
+                _entryFilter.App=single.Key;Navigate("pending");if(_pendingFilter.App.Length>0)throw new InvalidOperationException("待分析继承了应用筛选。");
+                for(int repeat=0;repeat<4;repeat++){Navigate("hotspot");await Task.Delay(60);Navigate("overview");await Task.Delay(60);}
+                var report=new{filtered,all,total=_snapshot.Entries.Count,pendingIndependent=true,hotspotNavigationCycles=4,success=true};
+                Directory.CreateDirectory(Path.Combine(DataPaths.UserRoot,"qa"));await File.WriteAllTextAsync(Path.Combine(DataPaths.UserRoot,"qa","filter-regression.json"),Contract.Encode(report));
+                AppLog.Write("qa-filter-regression",report);page="entries";_entryFilter.Clear();
+            }
             if(page is "tray" or "tray-dark" or "tray-interactive")
             {
                 _settings.Theme=page=="tray-dark"?"深色":"浅色";
@@ -133,8 +171,8 @@ public sealed partial class ToolboxWindow : Window
                 }
                 finally{menu.Dismiss();}return;
             }
-            if (!new[] { "overview", "entries", "apps", "runtime", "pending", "alerts", "changes", "hotspot", "settings" }.Contains(page)) throw new InvalidDataException("未知验证页面。");
-            await Task.Delay(1200); Navigate(page); await Task.Delay(700);
+            if (!new[] { "overview", "entries", "apps", "runtime", "pending", "alerts", "changes", "controls", "groups", "hotspot", "settings" }.Contains(page)) throw new InvalidDataException("未知验证页面。");
+            await Task.Delay(1200); if(!retainSelection)Navigate(page); await Task.Delay(700);
             // RenderTargetBitmap validates this application's actual XAML tree even on a locked desktop.
             // Native system backdrop visuals are outside this capture and are not claimed as visually verified.
             ShellRoot.Background=new SolidColorBrush(Microsoft.UI.Colors.White);
@@ -166,17 +204,21 @@ public sealed partial class ToolboxWindow : Window
     private void Tell(string title,string body,InfoBarSeverity severity=InfoBarSeverity.Informational)
     {Message.Title=title;Message.Message=body;Message.Severity=severity;Message.IsOpen=true;}
     private void Navigation_SelectionChanged(NavigationView sender,NavigationViewSelectionChangedEventArgs args)
-    {if(_initialized && args.SelectedItem is NavigationViewItem item){_page=item.Tag?.ToString()??"overview";RenderPage();}}
-    private void Navigate(string page)
+    {if(_initialized && args.SelectedItem is NavigationViewItem item){_page=item.Tag?.ToString()??"overview";if(_page=="entries"&&!_routeWithFilter)_entryFilter.Clear();if(_page=="pending"&&!_routeWithFilter)_pendingFilter.Clear();RenderPage();}}
+    private void Navigate(string page,bool preserveFilter=false)
     {
         var item=Navigation.MenuItems.Concat(Navigation.FooterMenuItems).OfType<NavigationViewItem>().FirstOrDefault(x=>x.Tag?.ToString()==page);
-        if(item is not null)Navigation.SelectedItem=item;else {_page=page;RenderPage();}
+        if(!preserveFilter&&page=="entries")_entryFilter.Clear();
+        _routeWithFilter=preserveFilter;
+        try{if(item is not null){if(ReferenceEquals(Navigation.SelectedItem,item)){_page=page;RenderPage();}else Navigation.SelectedItem=item;}else {_page=page;RenderPage();}}
+        finally{_routeWithFilter=false;}
     }
     private void RenderPage()
     {
         if(!_initialized)return;
+        _refreshEntries=null;
         PageHost.Content=null;
-        PageHost.Content=_page switch {"entries"=>Entries(),"apps"=>Apps(),"runtime"=>Runtime(),"pending"=>Pending(),"alerts"=>Alerts(),"changes"=>Changes(),"hotspot"=>new ScrollViewer{Content=_hotspot},"settings"=>SettingsPage(),_=>Overview()};
+        PageHost.Content=_page switch {"entries"=>Entries(),"apps"=>Apps(),"groups"=>Groups(),"runtime"=>Runtime(),"pending"=>Pending(),"alerts"=>Alerts(),"changes"=>Changes(),"controls"=>Controls(),"hotspot"=>_hotspotHost,"settings"=>SettingsPage(),_=>Overview()};
     }
     private TextBlock Text(string text,double size=0,bool strong=false)
     {
@@ -214,33 +256,170 @@ public sealed partial class ToolboxWindow : Window
         }
         body.Children.Add(Text(snapshot.BootObservation,12));return Scroll(body);
     }
+    private sealed record FilterChoice(string Key,string Label);
     private UIElement Entries(bool pendingOnly=false)
     {
-        var grid=new Grid{RowSpacing=10};grid.RowDefinitions.Add(new(){Height=GridLength.Auto});grid.RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});grid.RowDefinitions.Add(new(){Height=new GridLength(pendingOnly?150:210)});
-        var search=new TextBox{PlaceholderText="搜索名称、所属应用、命令或来源",MinWidth=240};
-        var category=new ComboBox{MinWidth=150,ItemsSource=new[]{"全部类别"}.Concat((_snapshot?.Entries??[]).Select(x=>x.Category).Distinct().Order()).ToList(),SelectedIndex=0};
-        var advice=new ComboBox{MinWidth=130,ItemsSource=new[]{"全部建议","待分析","建议保留","按需保留","可考虑取消","需修复"},SelectedIndex=0};
+        if(pendingOnly)_store.ReconcilePending(_snapshot);
+        var state=pendingOnly?_pendingFilter:_entryFilter;
+        var grid=new Grid{RowSpacing=10};
+        grid.RowDefinitions.Add(new(){Height=GridLength.Auto});grid.RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});
         var list=new ListView{ItemTemplate=Rows,SelectionMode=ListViewSelectionMode.Single};
-        var detail=new TextBox{IsReadOnly=true,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,PlaceholderText="选中条目查看证据。登录入口、服务、任务及进程分别核对。"};ScrollViewer.SetVerticalScrollBarVisibility(detail,ScrollBarVisibility.Auto);
-        var note=new TextBox{PlaceholderText="记录个人用途，例如用于远控、代理、打印或开发",MaxLength=2000,MinWidth=280};
-        var saveNote=Button("保存用途",()=>{if(list.SelectedItem is StartupEntry e){_store.SaveNote(e.Id,note.Text);e.UserNote=note.Text;e.Analysis=null;detail.Text=EntryDetail(e);Tell("用途已保存并加入待分析","备注参与分析指纹；旧建议不会覆盖新用途下的判断。");}});
-        var bottom=new Grid{RowSpacing=8};bottom.RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});bottom.RowDefinitions.Add(new(){Height=GridLength.Auto});bottom.Children.Add(detail);var noteRow=Row(note,saveNote);Grid.SetRow(noteRow,1);bottom.Children.Add(noteRow);
-        var count=Text("",12);var controls=Row(search,category,advice);
-        var header=Column(Text(pendingOnly?"Codex 待分析条目":"全部启动入口",24,true),controls,Row(
-            Button("监视当前状态",()=>{if(list.SelectedItem is StartupEntry e)_=Watch(e);}),
-            Button(pendingOnly?"移出待分析":"加入待分析",()=>{if(list.SelectedItem is StartupEntry e){if(pendingOnly)_store.RemovePending(e.Id);else _store.Enqueue(e.Id);Filter();Tell("待分析区已更新","分析只产生建议，不修改系统配置。");}}),
-            Button("清除应用筛选",()=>{_appFilter="";Filter();})),count);
-        grid.Children.Add(header);Grid.SetRow(list,1);grid.Children.Add(list);Grid.SetRow(bottom,2);grid.Children.Add(bottom);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(list,"Entries.List");
+        StartupEntry? selected=null;
+        var source=_snapshot?.Entries??[];
+        var search=new TextBox{PlaceholderText="搜索名称、应用、命令、来源或用途",Text=state.Search,MinWidth=260};
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(search,"Entries.Search");
+        var choices=new List<ComboBox>();
+        ComboBox Choice(string header,string all,IEnumerable<string> values,string value,Action<string> save)
+        {
+            var items=new[]{new FilterChoice("",all)}.Concat(values.Distinct().Order().Select(x=>new FilterChoice(x,x))).ToList();
+            var box=new ComboBox{Header=header,ItemsSource=items,DisplayMemberPath="Label",SelectedValuePath="Key",MinWidth=135};
+            box.SelectedItem=items.FirstOrDefault(x=>x.Key==value)??items[0];
+            box.SelectionChanged+=(_,_)=>{save((box.SelectedItem as FilterChoice)?.Key??"");Filter();};
+            choices.Add(box);return box;
+        }
+        var count=Text("",12);Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(count,"Entries.Count");
+        var context=Text("",12);Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(context,"Entries.Context");
+        var picked=Text("选中条目后查看证据或执行单项操作。",12);
+        var explanation=Text("",12);
+        var enable=AsyncButton("启用",async()=>{if(selected is not null)await ChangeEntry(selected,"setEnabled","true");});
+        var disable=AsyncButton("禁用",async()=>{if(selected is not null)await ChangeEntry(selected,"setEnabled","false");});
+        var startService=AsyncButton("启动服务",async()=>{if(selected is not null)await ChangeEntry(selected,"serviceStart","");});
+        var stopService=AsyncButton("停止服务",async()=>{if(selected is not null)await ChangeEntry(selected,"serviceStop","");});
+        var modes=new[]{new FilterChoice("auto","自动"),new FilterChoice("delayed-auto","自动（延迟）"),new FilterChoice("demand","手动"),new FilterChoice("disabled","禁用")};
+        var serviceMode=new ComboBox{ItemsSource=modes,DisplayMemberPath="Label",MinWidth=125,SelectedIndex=0};
+        var applyMode=AsyncButton("应用启动类型",async()=>{if(selected is not null&&serviceMode.SelectedItem is FilterChoice c)await ChangeEntry(selected,"serviceMode",c.Key);});
+        var details=AsyncButton("详情与用途",async()=>{if(selected is not null)await ShowEntryDetails(selected);});
+        var watch=AsyncButton("监视当前状态",async()=>{if(selected is not null)await Watch(selected);});
+        var system=Button("打开系统配置",()=>{if(selected is not null)OpenConfiguration(selected);});
+        var queue=new Button{Content=pendingOnly?"暂不分析此项":"加入待分析"};
+        queue.Click+=(_,_)=>{if(selected is null)return;if(pendingOnly)_store.RemovePending(selected.Id);else _store.Enqueue(selected.Id);Filter();};
+        var reset=Button("重置全部筛选",()=>{state.Clear();search.Text="";foreach(var box in choices)box.SelectedIndex=0;Filter();});
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(reset,"Entries.Reset");
+        var category=Choice("入口类别","全部类别",source.Select(x=>x.Category),state.Category,x=>state.Category=x);
+        var advice=Choice("必要性建议","全部建议",new[]{"待分析","建议保留","按需保留","可考虑取消","需修复"},state.Advice,x=>state.Advice=x);
+        var control=Choice("启用/启动类型","全部状态",source.Select(x=>x.ControlValue),state.Control,x=>state.Control=x);
+        var runtime=Choice("实际运行","全部运行状态",source.Select(EntryQueries.Runtime),state.Runtime,x=>state.Runtime=x);
+        var owner=Choice("所属账户","全部账户",source.Select(x=>x.OwnerSid),state.Owner,x=>state.Owner=x);
+        void RefreshActions()
+        {
+            foreach(var button in new[]{enable,disable,startService,stopService,applyMode,details,watch,system,queue})button.IsEnabled=selected is not null;
+            bool service=selected?.Provider=="services";
+            startService.Visibility=stopService.Visibility=serviceMode.Visibility=applyMode.Visibility=service?Visibility.Visible:Visibility.Collapsed;
+            enable.Visibility=disable.Visibility=service?Visibility.Collapsed:Visibility.Visible;
+            if(selected is null){explanation.Text="";picked.Text="选中条目后查看证据或执行单项操作。";return;}
+            picked.Text=$"{selected.Name} · {selected.StateText} · {selected.EffectiveAdvice}";
+            string reason=ControlPolicy.Reason(selected,Contract.Sid);
+            explanation.Text=reason.Length>0?reason:service?"更改启动类型不会自动启停服务。所有修改先预览，再申请管理员授权。":"更改此入口的启用状态；其他入口与当前进程不受此按钮连带处理。";
+            bool Allowed(string operation,string value){try{ControlPolicy.Validate(selected,Contract.Sid,operation,value);return true;}catch{return false;}}
+            enable.IsEnabled=Allowed("setEnabled","true")&&selected.Enabled!=true;
+            disable.IsEnabled=Allowed("setEnabled","false")&&selected.Enabled!=false;
+            startService.IsEnabled=Allowed("serviceStart","")&&selected.State=="Stopped"&&selected.Mode!="禁用";
+            stopService.IsEnabled=Allowed("serviceStop","")&&selected.State=="Running";
+            applyMode.IsEnabled=reason.Length==0;serviceMode.IsEnabled=reason.Length==0;
+            string current=selected.Mode switch{"自动"=>selected.Evidence.GetValueOrDefault("延迟启动")=="1"?"delayed-auto":"auto","禁用"=>"disabled",_=>"demand"};
+            serviceMode.SelectedItem=modes.First(x=>x.Key==current);
+            applyMode.IsEnabled=Allowed("serviceMode",current);
+            watch.IsEnabled=selected.ObservationStatus=="本次读取"&&!selected.ControlValue.Contains("未确认");
+        }
         void Filter()
         {
-            var selected=_store.Pending.ToHashSet();IEnumerable<StartupEntry> entries=_snapshot?.Entries??[];
-            if(pendingOnly)entries=entries.Where(x=>selected.Contains(x.Id));if(_appFilter.Length>0)entries=entries.Where(x=>x.App==_appFilter);
-            if(category.SelectedIndex>0)entries=entries.Where(x=>x.Category==category.SelectedItem?.ToString());
-            if(advice.SelectedIndex>0)entries=entries.Where(x=>x.EffectiveAdvice==advice.SelectedItem?.ToString());
-            string q=search.Text.Trim();if(q.Length>0)entries=entries.Where(x=>$"{x.Name} {x.App} {x.Command} {x.Source} {x.Publisher}".Contains(q,StringComparison.CurrentCultureIgnoreCase));
-            var rows=entries.OrderBy(x=>x.Category).ThenBy(x=>x.Name).ToList();list.ItemsSource=rows;count.Text=$"显示 {rows.Count:N0} 项{(_appFilter.Length>0?" · "+_appFilter:"")}；建议需要结合功能依赖。";
+            string? old=list.SelectedItem is StartupEntry e?e.Id:null;
+            var pending=pendingOnly?_store.Pending.ToHashSet():null;
+            var rows=state.Apply(_snapshot?.Entries??[],pending);
+            list.ItemsSource=rows;
+            list.SelectedItem=rows.FirstOrDefault(x=>x.Id==old);
+            selected=list.SelectedItem as StartupEntry;
+            int total=pendingOnly?(_snapshot?.Entries??[]).Count(x=>pending!.Contains(x.Id)):(_snapshot?.Entries.Count??0);
+            count.Text=$"显示 {rows.Count:N0} / {total:N0} 项；本机快照共 {_snapshot?.Entries.Count??0:N0} 项。";
+            context.Text=state.Active?"当前筛选："+string.Join(" · ",new[]{state.App.Length>0?"应用："+state.App:"",state.Category,state.Advice,state.Control,state.Runtime,state.Owner,state.Search}.Where(x=>x.Length>0)):"当前未设置筛选。";
+            RefreshActions();
         }
-        list.SelectionChanged+=(_,_)=>{if(list.SelectedItem is StartupEntry e){detail.Text=EntryDetail(e);note.Text=e.UserNote;}};search.TextChanged+=(_,_)=>Filter();category.SelectionChanged+=(_,_)=>Filter();advice.SelectionChanged+=(_,_)=>Filter();Filter();return grid;
+        list.SelectionChanged+=(_,_)=>{selected=list.SelectedItem as StartupEntry;RefreshActions();};
+        serviceMode.SelectionChanged+=(_,_)=>{if(selected is not null&&serviceMode.SelectedItem is FilterChoice c){try{ControlPolicy.Validate(selected,Contract.Sid,"serviceMode",c.Key);applyMode.IsEnabled=true;}catch{applyMode.IsEnabled=false;}}};
+        search.TextChanged+=(_,_)=>{state.Search=search.Text;Filter();};
+        var header=Column(Text(pendingOnly?"待分析":"全部启动入口",24,true),Row(search,category,advice),
+            new Expander{Header="状态与账户筛选",HorizontalAlignment=HorizontalAlignment.Stretch,Content=Row(control,runtime,owner)},
+            Row(reset,details,watch,queue,system),context,count,picked,Row(enable,disable,startService,stopService,serviceMode,applyMode),explanation);
+        if(pendingOnly)
+        {
+            header.Children.Insert(1,Text("未分析条目自动进入；手动暂缓的项目在配置变化后重新核对。每批最多 100 项。",12));
+            header.Children.Insert(2,Row(AsyncButton("导出分析包",ExportBatch),AsyncButton("导入分析结果",ImportAnalysis),AsyncButton("连接本机 Codex",ConnectCodex)));
+        }
+        grid.Children.Add(header);Grid.SetRow(list,1);grid.Children.Add(list);_refreshEntries=Filter;Filter();return grid;
+    }
+    private async Task ShowEntryDetails(StartupEntry entry)
+    {
+        var note=new TextBox{Header="个人用途",Text=entry.UserNote,AcceptsReturn=true,MaxLength=2000,TextWrapping=TextWrapping.Wrap};
+        var dialog=new ContentDialog{XamlRoot=ShellRoot.XamlRoot,Title=entry.Name,PrimaryButtonText="保存用途",CloseButtonText="关闭",DefaultButton=ContentDialogButton.Close,
+            Content=new ScrollViewer{Content=Column(new TextBox{Text=EntryDetail(entry),IsReadOnly=true,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,Height=300},note),MaxHeight=480}};
+        if(await dialog.ShowAsync()==ContentDialogResult.Primary){_store.SaveNote(entry.Id,note.Text);entry.UserNote=note.Text;entry.Analysis=null;_refreshEntries?.Invoke();}
+    }
+    private static void OpenConfiguration(StartupEntry entry)
+    {
+        string target=entry.Provider switch{"services"=>"services.msc","tasks"=>"taskschd.msc","run" or "appx"=>"ms-settings:startupapps",_=>"regedit.exe"};
+        Process.Start(new ProcessStartInfo(target){UseShellExecute=true});
+    }
+    private static string OperationName(string operation,string value)=>operation switch
+    {"setEnabled"=>value=="true"?"启用启动入口":"禁用启动入口","serviceStart"=>"启动服务","serviceStop"=>"停止服务","serviceMode"=>"启动类型改为 "+(value switch{"auto"=>"自动","delayed-auto"=>"自动（延迟）","demand"=>"手动",_=>"禁用"}),"restore"=>"恢复备份状态",_=>"同步恢复记录"};
+    private async Task ChangeEntry(StartupEntry entry,string operation,string value)
+    {
+        if(_adminBusy){Tell("已有操作正在进行","请等待当前扫描或修改结束。");return;}
+        ControlPolicy.Validate(entry,Contract.Sid,operation,value);
+        var watch=new CheckBox{Content="修改后将新启动状态设为关注值",IsChecked=true,Visibility=operation is "setEnabled" or "serviceMode"?Visibility.Visible:Visibility.Collapsed};
+        var dialog=new ContentDialog{XamlRoot=ShellRoot.XamlRoot,Title=OperationName(operation,value),PrimaryButtonText="确认并申请管理员授权",CloseButtonText="取消",DefaultButton=ContentDialogButton.Close,
+            Content=Column(Text(entry.Display,16,true),Text($"当前：{entry.StateText}\n目标：{OperationName(operation,value)}\n来源：{entry.Source}"),Text("执行前重新核对配置并保存受控备份，执行后读取系统实际结果。恢复记录保存在“操作与恢复”。",12),
+                Text(entry.Provider=="services"?$"依赖登记：{entry.Evidence.GetValueOrDefault("依赖","未提供")}\n启动类型和当前运行状态分别处理；停止服务不会连带停止其他服务。":"登录入口的启用状态与已经运行的进程分别处理。",12),watch)};
+        if(await dialog.ShowAsync()!=ContentDialogResult.Primary)return;
+        if(_qa)throw new InvalidOperationException("界面验证只允许查看和取消修改预览。");
+        await RunControl(new(){EntryId=entry.Id,Provider=entry.Provider,Fingerprint=entry.Fingerprint,UserNote=entry.UserNote,Operation=operation,Value=value},watch.Visibility==Visibility.Visible&&watch.IsChecked==true);
+    }
+    private async Task RunControl(StartupControlRequest request,bool watchAfter=false)
+    {
+        if(_adminBusy)return;_adminBusy=true;bool previousPause=_monitor.Paused;_monitor.Paused=true;_monitor.CancelScan();GlobalScanButton.IsEnabled=false;
+        try
+        {
+            ScanTitle.Text="等待所选操作的管理员授权";ScanDescription.Text="授权后仅执行预览中的单项操作。";ScanProgressBar.IsIndeterminate=true;
+            var response=await AdminClient.Run("--control",p=>DispatcherQueue.TryEnqueue(()=>ShowProgress(p)),CancellationToken.None,request);
+            var records=response.Controls??throw new InvalidDataException("未返回操作记录。");foreach(var record in records)_store.SaveControl(record);
+            if(request.Operation=="history"){Tell("恢复记录已同步",$"读取本账户 {records.Count} 份受控记录。");RenderPage();return;}
+            var current=records.First();bool success=current.Status is "已应用" or "已恢复";
+            if(current.After is StartupEntry after)
+            {
+                _lastControlTime=after.ObservedAt;_store.Set("lastControlTime",_lastControlTime);
+                if(success&&watchAfter&&!after.ControlValue.Contains("未确认"))
+                {
+                    var rule=ToolboxStore.Watch(after);_store.SaveWatch(rule);
+                    if(_serviceConnected){try{await AdminClient.Service(new(){Kind="watch",Rule=rule});}catch(Exception ex){_store.AddEvents(new ObservedEvent[]{new(){Kind="监测缺口",Name="机器关注同步",Detail=ex.Message+"；请更新机器组件后重新关注。"}});}}
+                }
+                else if(success&&watchAfter&&request.Operation=="restore")
+                {
+                    _store.RemoveWatch(after.Id);
+                    if(_serviceConnected){try{await AdminClient.Service(new(){Kind="unwatch",Text=after.Id});}catch(Exception ex){_store.AddEvents(new ObservedEvent[]{new(){Kind="监测缺口",Name="机器关注移除",Detail=ex.Message}});}}
+                }
+                var snapshot=_store.MergeControlEntry(after);if(snapshot is not null)ApplySnapshot(snapshot);
+            }
+            if(_serviceConnected){try{await AdminClient.Service(new(){Kind="scan"});}catch{}}
+            Tell(success?"操作已由系统重新核对":"操作没有完整完成",$"{current.Before.Name}：{current.Status}。{current.Error}\n备份编号：{current.Id}",success?InfoBarSeverity.Success:InfoBarSeverity.Warning);RenderPage();
+        }
+        catch(System.ComponentModel.Win32Exception ex)when(ex.NativeErrorCode==1223){Tell("管理员授权已取消","未执行该项修改。");}
+        catch(Exception ex){Tell("操作未完成",ex.Message+" 如执行进程意外中断，可在“操作与恢复”同步受控备份。",InfoBarSeverity.Error);}
+        finally{_adminBusy=false;_monitor.Paused=_serviceConnected||previousPause;GlobalScanButton.IsEnabled=true;ScanProgressBar.IsIndeterminate=false;ScanTitle.Text="单项操作结束";ScanDescription.Text="结果请查看提示和操作记录；全局扫描仍可独立执行。";}
+    }
+    private UIElement Controls()
+    {
+        var list=new ListView{ItemTemplate=Rows,ItemsSource=_store.Controls};
+        var detail=new TextBox{IsReadOnly=true,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,Height=185};
+        var restore=AsyncButton("恢复所选备份",async()=>
+        {
+            if(list.SelectedItem is not StartupControlRecord record)return;
+            if(record.Status is not ("已应用" or "失败，存在状态变化，可恢复")){Tell("此记录不需要自动恢复","只有已核实的应用结果或部分修改记录可恢复；未完成记录需先核对。 ");return;}
+            var dialog=new ContentDialog{XamlRoot=ShellRoot.XamlRoot,Title="恢复所选条目",PrimaryButtonText="确认并申请管理员授权",CloseButtonText="取消",DefaultButton=ContentDialogButton.Close,
+                Content=Column(Text(record.Before.Name,16,true),Text($"备份前：{record.Before.StateText}\n执行后：{record.After?.StateText}\n恢复前将再次核对；若配置或运行状态已被其他内容改变，则拒绝覆盖。"))};
+            if(await dialog.ShowAsync()==ContentDialogResult.Primary)await RunControl(new(){Operation="restore",RestoreId=record.Id},record.Operation is "setEnabled" or "serviceMode");
+        });
+        list.SelectionChanged+=(_,_)=>{if(list.SelectedItem is StartupControlRecord r)detail.Text=$"{r.Display}\n{r.Detail}\n原状态：{r.Before.StateText}\n结果：{r.After?.StateText}\n来源：{r.Before.Source}\n备份编号：{r.Id}\n受控副本由管理员保存；本地记录不会作为恢复指令直接执行。";};
+        return ListPage("操作与恢复",Column(Text("每项修改保存原状态和系统核对结果；恢复会重新申请权限并拒绝覆盖后续变化。",12),Row(restore,AsyncButton("同步管理员备份",()=>RunControl(new(){Operation="history"})))),list,detail);
     }
     private string EntryDetail(StartupEntry e)
     {
@@ -261,13 +440,21 @@ public sealed partial class ToolboxWindow : Window
         }
         catch(Exception ex){Tell("关注状态未完整保存",ex.Message,InfoBarSeverity.Warning);}
     }
-    private sealed record AppRow(string App,int Count,int Running,int Unknown)
-    {public string Display=>$"{App} · {Count} 个入口";public string Detail=>$"运行关联 {Running} · 待分析 {Unknown}；点击查看服务、任务和登录入口";}
+    private UIElement Groups()
+    {
+        var kinds=new[]{"类别","应用","建议","启用状态","运行状态","账户"};
+        var choice=new ComboBox{Header="分类方式",ItemsSource=kinds,SelectedItem=_groupKind,MinWidth=220};
+        var list=new ListView{ItemTemplate=Rows};
+        void Refresh()=>list.ItemsSource=EntryQueries.Groups(_snapshot?.Entries??[],_groupKind).ToList();
+        choice.SelectionChanged+=(_,_)=>{_groupKind=choice.SelectedItem?.ToString()??"类别";Refresh();};
+        list.SelectionChanged+=(_,_)=>{if(list.SelectedItem is EntryGroup group){EntryQueries.SelectGroup(_entryFilter,_groupKind,group.Name);Navigate("entries",true);}};
+        Refresh();return ListPage("分类浏览",Column(choice,Text("支持按入口类别、应用、建议、启用状态、实际运行或账户查看。",12)),list);
+    }
     private UIElement Apps()
     {
-        var list=new ListView{ItemTemplate=Rows,ItemsSource=_snapshot?.Entries.GroupBy(x=>x.App).Select(x=>new AppRow(x.Key,x.Count(),x.Count(y=>y.ProcessId>0),x.Count(y=>y.EffectiveAdvice=="待分析"))).OrderByDescending(x=>x.Count).ToList()};
-        list.SelectionChanged+=(_,_)=>{if(list.SelectedItem is AppRow row){_appFilter=row.App;Navigate("entries");}};
-        return ListPage("按应用查看",Text("同一应用的不同启动方式合并展示；登记数量不等于常驻进程数量。"),list);
+        var list=new ListView{ItemTemplate=Rows,ItemsSource=EntryQueries.Groups(_snapshot?.Entries??[],"应用").ToList()};
+        list.SelectionChanged+=(_,_)=>{if(list.SelectedItem is EntryGroup row){EntryQueries.SelectGroup(_entryFilter,"应用",row.Name);Navigate("entries",true);}};
+        return ListPage("按应用查看",Text("选择应用后会显示明确的应用筛选；点击左侧“全部启动入口”即返回全部。"),list);
     }
     private UIElement Runtime()
     {
@@ -276,14 +463,7 @@ public sealed partial class ToolboxWindow : Window
         choice.SelectionChanged+=(_,_)=>Refresh();list.SelectionChanged+=(_,_)=>detail.Text=list.SelectedItem switch{ObservedEvent e=>$"{e.Display}\n{e.Source}\n{e.Association}\n{e.Path}\n{e.Detail}",ProcessRecord p=>$"{p.Display}\n{p.Detail}\n{p.Path}\n{p.Command}",_=>""};Refresh();
         return ListPage("运行与拉起记录",Column(choice,Text("普通权限仅提供可用范围。完整持续进程事件需要管理员/机器组件；父 PID 不等于确定的自动启动原因。",12)),list,detail);
     }
-    private UIElement Pending()
-    {
-        var panel=new Grid{RowSpacing=12};panel.RowDefinitions.Add(new(){Height=GridLength.Auto});panel.RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});
-        var tools=Column(Text("将证据交给 Codex",22,true),Text($"待分析 {_store.Pending.Count} 项 · 单批最多 100 项 · 默认脱敏令牌等参数。"),Row(
-            AsyncButton("导出分析包",ExportBatch),AsyncButton("导入分析结果",ImportAnalysis),AsyncButton("连接本机 Codex",ConnectCodex)),
-            Text($"已返回建议 {_store.Decisions.Count} 项，可在全部入口中查看对应建议及证据。\n连接后在 Codex 中说：读取 TunHotspot 待分析区，分析必要性并将建议返回软件。没有安装 Codex 时仍可使用本地功能。",12));
-        panel.Children.Add(tools);var entries=Entries(true);Grid.SetRow((FrameworkElement)entries,1);panel.Children.Add(entries);return panel;
-    }
+    private UIElement Pending()=>Entries(true);
     private UIElement Alerts()
     {
         var list=new ListView{ItemTemplate=Rows};var detail=new TextBox{IsReadOnly=true,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,Height=150};
@@ -343,7 +523,7 @@ public sealed partial class ToolboxWindow : Window
                 Row(AsyncButton("安装/更新开机采集组件",()=>Component(true)),AsyncButton("卸载采集组件",()=>Component(false)),AsyncButton(_settings.Paused?"恢复监测":"暂停监测",Pause)),
                 Text("安装时会弹 UAC，并添加本软件的机器服务和当前用户登录托盘入口。卸载组件保留历史数据及受控版本文件供恢复。",12))),
             Card(Column(Text("分析与数据",18,true),Text("数据保存在当前用户本地目录；机器采集日志位于管理员控制的 ProgramData。普通运行事件与长期告警分别保留。"),Row(AsyncButton("连接 Codex",ConnectCodex),AsyncButton("导出扫描报告",ExportReport)),
-                Text("Windows 11 x64 · 自包含发布 · AI 分析可选；服务/驱动/任务的实际修改功能不包含在此只读版本。",12))));
+                Text("Windows 11 x64 · 自包含发布 · AI 分析可选。常见登录入口、第三方任务及普通服务支持单项控制；驱动和特殊入口显示具体限制与系统配置入口。",12))));
         return Scroll(body);
     }
     private void SaveSettings(){_store.Settings=_settings;ApplyAppearance();}
@@ -391,7 +571,7 @@ public sealed partial class ToolboxWindow : Window
         ScanTitle.Text=snapshot.Cancelled?"扫描已取消":snapshot.Complete?"采集流程完成":"采集流程完成 · 存在覆盖缺口";
         ScanDescription.Text=$"{snapshot.Privilege} · {snapshot.Entries.Count:N0} 个入口 · {snapshot.Finished.ToLocalTime():HH:mm:ss} · 只读";
         _tray?.Update($"TunHotspot · {snapshot.Entries.Count} 个入口 · 未读告警 {_store.Alerts.Count(x=>!x.IsRead)}");
-        if(_page is "overview" or "apps")RenderPage();
+        if(_page is "entries" or "pending")_refreshEntries?.Invoke();else if(_page is "overview" or "apps" or "groups")RenderPage();
         AppLog.Write("snapshot-received",new{snapshot.Id,count=snapshot.Entries.Count,snapshot.Privilege,complete=snapshot.Complete});
     }
     private void AttachDecisions()
@@ -448,7 +628,7 @@ public sealed partial class ToolboxWindow : Window
             try
             {
                 var response=await AdminClient.Service(new(){Kind="status"});_serviceConnected=true;_monitor.Paused=true;
-                if(response.Snapshot is not null&&response.Snapshot.Id!=_machineSnapshotId)
+                if(response.Snapshot is not null&&response.Snapshot.Id!=_machineSnapshotId&&response.Snapshot.Started>=_lastControlTime)
                 {_machineSnapshotId=response.Snapshot.Id;_store.SaveSnapshot(response.Snapshot);ApplySnapshot(response.Snapshot);if(_serviceScanRequested&&response.Progress is null){_serviceScanRequested=false;CancelScanButton.IsEnabled=false;}}
                 if(response.Progress is not null)ShowProgress(response.Progress);
                 else if(_serviceScanRequested&&response.ScanCancelled){_serviceScanRequested=false;CancelScanButton.IsEnabled=false;ScanProgressBar.IsIndeterminate=false;ScanTitle.Text="机器扫描已取消，保留上次结果";}

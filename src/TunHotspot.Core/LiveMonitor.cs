@@ -155,12 +155,12 @@ public sealed class LiveMonitor : IDisposable
         {
             using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
             using var users = RegistryKey.OpenBaseKey(RegistryHive.Users, RegistryView.Registry64);
-            foreach (var path in new[] { @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run", @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run" }) Append(machine, path);
+            foreach (var path in new[] { @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run", @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run32", @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder", @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run" }) Append(machine, path);
             foreach (string sid in users.GetSubKeyNames().Where(x => x.StartsWith("S-1-5-") && !x.EndsWith("_Classes")).Order(StringComparer.OrdinalIgnoreCase))
-                foreach (var suffix in new[] { @"\SOFTWARE\Microsoft\Windows\CurrentVersion\Run", @"\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run", @"\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce" }) Append(users, sid + suffix);
+                foreach (var suffix in new[] { @"\SOFTWARE\Microsoft\Windows\CurrentVersion\Run", @"\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run", @"\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder", @"\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce" }) Append(users, sid + suffix);
             using var services = machine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services");
             if (services is not null) foreach (string name in services.GetSubKeyNames().Order(StringComparer.OrdinalIgnoreCase))
-            { using var s = services.OpenSubKey(name); values.Append(name).Append(':').Append(s?.GetValue("Start")).Append(':').Append(s?.GetValue("ImagePath")).Append(';'); }
+            { using var s = services.OpenSubKey(name); values.Append(name).Append(':').Append(s?.GetValue("Start")).Append(':').Append(s?.GetValue("DelayedAutoStart")).Append(':').Append(s?.GetValue("ImagePath")).Append(';'); }
         }
         catch (Exception) { /* The full collector reports permission gaps; this is a bounded change hint. */ }
         return Contract.Hash(values.ToString());

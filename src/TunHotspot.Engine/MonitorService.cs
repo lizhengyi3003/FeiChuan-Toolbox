@@ -1,4 +1,4 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.ServiceProcess;
@@ -34,14 +34,14 @@ internal sealed class MonitorService : ServiceBase
                 var request=await Wire.Receive(pipe,timeout.Token);WireMessage response;
                 switch(request.Kind)
                 {
-                    case "status":response=new(){Kind="status",Text="1.1.0",MonitorState=_monitor!.State,ScanCancelled=_monitor.LastScanCancelled,Progress=_monitor.Scanning?_monitor.CurrentProgress:null,Snapshot=store.Latest,Alerts=store.Alerts,Events=store.Events(500)};break;
+                    case "status":response=new(){Kind="status",Text="1.2.0",MonitorState=_monitor!.State,ScanCancelled=_monitor.LastScanCancelled,Progress=_monitor.Scanning?_monitor.CurrentProgress:null,Snapshot=store.Latest,Alerts=store.Alerts,Events=store.Events(500)};break;
                     case "scan": _=Task.Run(()=>_monitor!.ScanNow(stop),stop);response=new(){Kind="complete",Text="已提交机器全局扫描"};break;
                     case "cancelScan":_monitor!.CancelScan();response=new(){Kind="complete",Text="已请求取消本软件当前采集"};break;
                     case "watch":
                         var rule=request.Rule??throw new InvalidDataException("关注规则为空。");
                         var entry=store.Latest?.Entries.FirstOrDefault(x=>x.Id==rule.EntryId)??throw new InvalidDataException("机器快照无此条目，请先扫描。");
-                        if(rule.Expected!=entry.ControlValue)throw new InvalidDataException("关注状态已变化，请刷新后重试。");
-                        store.SaveWatch(ToolboxStore.Watch(entry));response=new(){Kind="complete",Text="已保存机器关注状态"};break;
+                        if(!new[]{"启用","禁用","自动","自动（延迟）","手动","引导","系统"}.Contains(rule.Expected))throw new InvalidDataException("关注状态无效。");
+                        var verified=ToolboxStore.Watch(entry);verified.Expected=rule.Expected;store.SaveWatch(verified);response=new(){Kind="complete",Text="已保存机器关注状态"};break;
                     case "unwatch":store.RemoveWatch(request.Text);response=new(){Kind="complete",Text="已取消关注"};break;
                     case "pause":_monitor!.Paused=request.Text=="true";var settings=store.Settings;settings.Paused=_monitor.Paused;store.Settings=settings;response=new(){Kind="complete",Text=_monitor.Paused?"机器监测已暂停":"机器监测已恢复"};break;
                     default:throw new InvalidDataException("未授权的机器组件操作。");

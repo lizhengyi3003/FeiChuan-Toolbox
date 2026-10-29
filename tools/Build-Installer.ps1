@@ -1,9 +1,9 @@
 ﻿param([string]$CompilerPath,[switch]$Publish,[switch]$Offline,[string]$PublishDirectory)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
-if($Publish){& (Join-Path $root 'build.ps1') -Publish -Offline:$Offline}
 if(-not $PublishDirectory){$PublishDirectory=Join-Path $root 'artifacts\toolbox-preview'}
 $PublishDirectory=[IO.Path]::GetFullPath($PublishDirectory)
+if($Publish){& (Join-Path $root 'build.ps1') -Publish -Offline:$Offline -OutputDirectory $PublishDirectory}
 if(-not $CompilerPath){
     $candidates=@((Join-Path $root '.tools\inno-build-tools\compiler\ISCC.exe'),'C:\Program Files\Inno Setup 7\ISCC.exe','C:\Program Files (x86)\Inno Setup 7\ISCC.exe')
     $CompilerPath=$candidates | Where-Object {Test-Path -LiteralPath $_} | Select-Object -First 1

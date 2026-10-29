@@ -9,9 +9,9 @@ namespace TunHotspot;
 internal static class AdminClient
 {
     internal static string EnginePath => Path.Combine(AppContext.BaseDirectory, "Engine", "TunHotspot.Engine.exe");
-    internal static async Task<WireMessage> Run(string operation, Action<ScanProgress> progress, CancellationToken cancellationToken)
+    internal static async Task<WireMessage> Run(string operation, Action<ScanProgress> progress, CancellationToken cancellationToken,StartupControlRequest? control=null)
     {
-        if (operation is not ("--scan" or "--install" or "--uninstall")) throw new InvalidOperationException("未知采集操作。");
+        if (operation is not ("--scan" or "--install" or "--uninstall" or "--control")) throw new InvalidOperationException("未知操作。");
         if (!File.Exists(EnginePath)) throw new FileNotFoundException("采集引擎未发布。请使用完整预览目录。", EnginePath);
         string name = "TunHotspot.Scan." + Guid.NewGuid().ToString("N");
         var acl=new PipeSecurity();
@@ -24,13 +24,14 @@ internal static class AdminClient
         using var connect = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); connect.CancelAfter(TimeSpan.FromSeconds(45));
         await pipe.WaitForConnectionAsync(connect.Token);
         if (ProcessSecurity.PipeClient(pipe) != process.Id) throw new UnauthorizedAccessException("采集连接与已授权进程不符。");
+        if(operation=="--control")await Wire.Send(pipe,new(){Kind="controlRequest",Control=control??throw new InvalidDataException("操作请求为空。")},cancellationToken);
         using var cancel = cancellationToken.Register(() => { try { Wire.Send(pipe, new() { Kind = "cancel" }).GetAwaiter().GetResult(); } catch { } });
         while (true)
         {
             var message = await Wire.Receive(pipe, cancellationToken);
             if (message.Kind == "progress" && message.Progress is not null) progress(message.Progress);
             else if (message.Kind == "error") throw new InvalidOperationException(message.Text);
-            else if (message.Kind is "snapshot" or "complete") return message;
+            else if (message.Kind is "snapshot" or "complete" or "controlResult") return message;
         }
     }
     internal static async Task<WireMessage> Service(WireMessage request, CancellationToken cancellationToken = default)

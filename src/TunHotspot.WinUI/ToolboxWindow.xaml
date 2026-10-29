@@ -10,7 +10,7 @@
    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
     <Image Source="Assets/TunHotspot.png" Width="22" Height="22"/>
     <TextBlock Text="TUN 热点与启动工具箱" FontSize="13"/>
-    <TextBlock Text="1.1 · 只读监测" FontSize="12" Opacity="0.6"/>
+    <TextBlock Text="1.2 · 启动管理" FontSize="12" Opacity="0.6"/>
    </StackPanel>
   </Grid>
   <Grid Grid.Row="1" Padding="22,10,22,14" RowSpacing="8" ColumnSpacing="12">
@@ -28,12 +28,14 @@
       PaneDisplayMode="Auto" OpenPaneLength="210" IsPaneOpen="True" SelectionChanged="Navigation_SelectionChanged">
    <NavigationView.MenuItems>
     <NavigationViewItem Content="总览" Tag="overview"><NavigationViewItem.Icon><FontIcon Glyph="&#xE80F;" FontFamily="Segoe Fluent Icons"/></NavigationViewItem.Icon></NavigationViewItem>
+    <NavigationViewItem Content="分类浏览" Tag="groups"><NavigationViewItem.Icon><FontIcon Glyph="&#xE8F1;" FontFamily="Segoe Fluent Icons"/></NavigationViewItem.Icon></NavigationViewItem>
     <NavigationViewItem Content="按应用查看" Tag="apps"><NavigationViewItem.Icon><FontIcon Glyph="&#xE71D;" FontFamily="Segoe Fluent Icons"/></NavigationViewItem.Icon></NavigationViewItem>
     <NavigationViewItem Content="全部启动入口" Tag="entries"><NavigationViewItem.Icon><FontIcon Glyph="&#xE8FD;" FontFamily="Segoe Fluent Icons"/></NavigationViewItem.Icon></NavigationViewItem>
     <NavigationViewItem Content="运行与拉起记录" Tag="runtime"><NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;" FontFamily="Segoe Fluent Icons"/></NavigationViewItem.Icon></NavigationViewItem>
     <NavigationViewItem Content="Codex 待分析" Tag="pending"><NavigationViewItem.Icon><FontIcon Glyph="&#xE8BD;" FontFamily="Segoe Fluent Icons"/></NavigationViewItem.Icon></NavigationViewItem>
     <NavigationViewItem Content="通知与关注" Tag="alerts"><NavigationViewItem.Icon><FontIcon Glyph="&#xE7F4;" FontFamily="Segoe Fluent Icons"/></NavigationViewItem.Icon></NavigationViewItem>
     <NavigationViewItem Content="快照与变化" Tag="changes"><NavigationViewItem.Icon><FontIcon Glyph="&#xE81C;" FontFamily="Segoe Fluent Icons"/></NavigationViewItem.Icon></NavigationViewItem>
+    <NavigationViewItem Content="操作与恢复" Tag="controls"><NavigationViewItem.Icon><FontIcon Glyph="&#xE7A7;" FontFamily="Segoe Fluent Icons"/></NavigationViewItem.Icon></NavigationViewItem>
     <NavigationViewItemSeparator/>
     <NavigationViewItem Content="兼容热点" Tag="hotspot"><NavigationViewItem.Icon><FontIcon Glyph="&#xE701;" FontFamily="Segoe Fluent Icons"/></NavigationViewItem.Icon></NavigationViewItem>
    </NavigationView.MenuItems>

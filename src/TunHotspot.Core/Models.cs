@@ -63,7 +63,7 @@ public sealed class StartupEntry
     public SortedDictionary<string, string> Evidence { get; set; } = new(StringComparer.Ordinal);
     [JsonIgnore] public string Fingerprint => Contract.Hash(Contract.Encode(Configuration) + "|" + FileIdentity + "|" + UserNote);
     [JsonIgnore] public string ControlValue => Enabled.HasValue ? (Enabled.Value ? "启用" : "禁用")
-        : Mode is "自动" or "手动" or "禁用" or "引导" or "系统" ? Mode : "状态未确认";
+        : Mode=="自动"&&Configuration.GetValueOrDefault("delayedAutoStart")=="1"?"自动（延迟）" : Mode is "自动" or "手动" or "禁用" or "引导" or "系统" ? Mode : "状态未确认";
     [JsonIgnore] public string StateText => $"{ControlValue} · {State}".Trim(' ', '·');
     [JsonIgnore] public string Display => $"{Name} · {App}";
     [JsonIgnore] public string Detail => $"{Category} · {StateText} · {EffectiveAdvice} · {Health}";

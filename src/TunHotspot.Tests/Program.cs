@@ -40,6 +40,18 @@ try
  var schemaRoot=Path.Combine(root,"future-schema");Directory.CreateDirectory(schemaRoot);
  var futureStore=new ToolboxStore(schemaRoot);futureStore.Set("schema","99");
  Rejected(()=>new ToolboxStore(schemaRoot),"新版数据库在执行 DDL 前被拒绝");
+ var unknown=Entry();unknown.Id=new string('b',64);store.Set("latest",Snapshot(unknown));Check(store.ReconcilePending()==1&&store.Pending.Contains(unknown.Id),"已有未分析结果无需重扫也会补齐待分析区");
+ store.RemovePending(unknown.Id);Check(store.ReconcilePending()==0&&!store.Pending.Contains(unknown.Id),"手动暂缓不会被自动入列立刻覆盖");var changedUnknown=Entry(false);changedUnknown.Id=unknown.Id;store.Set("latest",Snapshot(changedUnknown));Check(store.ReconcilePending()==1,"暂缓条目配置变化后重新自动入列");
+ var filter=new EntryFilter{App="single-app"};Check(filter.Apply([unknown]).Count==0,"应用筛选只作用于所选视图");filter.Clear();Check(filter.Apply([unknown]).Count==1&&!filter.Active,"重置筛选恢复全部入口");
+ var pendingFilter=new EntryFilter();filter.App="other";Check(pendingFilter.Apply([unknown],new HashSet<string>{unknown.Id}).Count==1,"待分析筛选不继承应用筛选");
+ Check(EntryQueries.Groups([unknown],"类别").Single().Count==1,"按类别分组计数正确");
+ var service=new StartupEntry{Provider="services",Category="服务",OwnerSid="machine",Name="ThirdPartyFixture",Mode="手动",State="Stopped"};ControlPolicy.Validate(service,Contract.Sid,"serviceStart","");Check(true,"普通服务允许独立启动操作");
+ try{var driver=new StartupEntry{Provider="services",Category="驱动",OwnerSid="machine"};ControlPolicy.Validate(driver,Contract.Sid,"serviceMode","disabled");throw new Exception("错误允许驱动修改");}catch(InvalidOperationException){Check(true,"拒绝驱动直接修改");}
+ service.Name="GameViewerService";try{ControlPolicy.Validate(service,Contract.Sid,"serviceStop","");throw new Exception("错误允许停止远控");}catch(InvalidOperationException){Check(true,"拒绝停止当前远控通道服务");}
+ service.Name="ThirdPartyFixture";Rejected(()=>ControlPolicy.Validate(service,Contract.Sid,"serviceMode","disabled & arbitrary"),"拒绝未枚举的服务修改值");
+ service.Mode="自动";service.Configuration["delayedAutoStart"]="1";Check(service.ControlValue=="自动（延迟）","关注状态区分普通自动与延迟自动");
+ service.Configuration["type"]="96";try{ControlPolicy.Validate(service,Contract.Sid,"serviceMode","disabled");throw new Exception("错误允许用户服务模板修改");}catch(InvalidOperationException){Check(true,"拒绝直接修改用户服务模板");}
+ var corruptHive=Path.Combine(root,"corrupt-hive.dat");File.WriteAllBytes(corruptHive,new byte[32]);Rejected(()=>OfflineHive.ReadStartup(corruptHive),"私有 hive 副本创建后拒绝损坏格式并清理");
  Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();foreach(var f in Directory.EnumerateFiles(schemaRoot))File.Delete(f);Directory.Delete(schemaRoot);
  Console.WriteLine($"通过 {passed} 项功能检查；数据目录 {root}");
 }

@@ -17,6 +17,10 @@ public sealed class WireMessage
     public List<ObservedEvent>? Events { get; set; }
     public string MonitorState { get; set; } = "";
     public bool ScanCancelled { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public StartupControlRequest? Control { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<StartupControlRecord>? Controls { get; set; }
 }
 
 public static class Wire

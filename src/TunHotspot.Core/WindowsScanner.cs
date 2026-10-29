@@ -19,9 +19,16 @@ public sealed class WindowsScanner
     private ScanSnapshot _result = new();
     private Coverage _stage = new();
     private CancellationToken _cancel;
+    private string? _targetProvider,_targetId;
     private readonly record struct UserHive(string Sid, string Path, RegistryKey? Key);
     public WindowsScanner(string ownerSid, ScanSnapshot? previous = null)
     { _ = new SecurityIdentifier(ownerSid); _owner = ownerSid; _previous = previous; }
+    public StartupEntry InspectTarget(string provider,string id,IProgress<ScanProgress>? progress=null)
+    {
+        if(provider is not ("run" or "services" or "tasks")||id.Length!=64)throw new InvalidDataException("修改目标范围无效。");
+        _targetProvider=provider;_targetId=id;var snapshot=Scan(progress);
+        return snapshot.Entries.SingleOrDefault(x=>x.Id==id)??throw new InvalidOperationException("所选条目已不存在或无法重新确认，请刷新扫描。");
+    }
 
     public ScanSnapshot Scan(IProgress<ScanProgress>? progress = null, CancellationToken cancellationToken = default)
     {
@@ -33,6 +40,7 @@ public sealed class WindowsScanner
             ("extensions", "Shell、打印与网络扩展", ReadExtensions), ("wmi", "WMI 永久订阅", ReadWmi),
             ("processes", "当前进程与已知关联", ReadProcesses), ("metadata", "文件、来源和建议", ReadMetadata)
         };
+        if(_targetProvider is not null)providers=providers.Where(x=>x.Id=="profiles"||x.Id==_targetProvider||x.Id=="metadata").ToArray();
         try
         {
             for (int index = 0; index < providers.Length; index++)
@@ -42,7 +50,13 @@ public sealed class WindowsScanner
                 _result.Coverage.Add(_stage);
                 progress?.Report(new(p.Name, index, providers.Length, _result.Entries.Count, $"正在读取{p.Name}…"));
                 var before = _result.Entries.Count; var timer = Stopwatch.StartNew();
-                try { p.Run(); _stage.Status = _stage.Issues.Count == 0 ? "成功" : "部分成功"; }
+                try
+                {
+                    if(p.Id=="metadata"&&_targetId is not null)_result.Entries=_result.Entries.Where(x=>x.Id==_targetId).ToList();
+                    p.Run();
+                    if(p.Id=="profiles"&&_targetId is not null)foreach(var user in _users.Where(x=>x.Sid!=_owner).ToList()){user.Key?.Dispose();_users.Remove(user);}
+                    _stage.Status = _stage.Issues.Count == 0 ? "成功" : "部分成功";
+                }
                 catch (OperationCanceledException) { _stage.Status = "取消"; _result.Cancelled = true; break; }
                 catch (Exception ex) { Issue(ex.Message); _stage.Status = "失败"; }
                 _result.Entries = _result.Entries.DistinctBy(x => x.Id).ToList();
@@ -135,6 +149,7 @@ public sealed class WindowsScanner
     }
     private void ReadRunRoot(RegistryKey root, string label, string owner, RegistryView view, string baseKey)
     {
+        using var approvalRoot=owner=="machine"?Machine(RegistryView.Registry64):null;
         foreach (var suffix in new[] { @"Run", @"RunOnce", @"RunOnceEx", @"Policies\Explorer\Run" })
         {
             Check();
@@ -144,7 +159,7 @@ public sealed class WindowsScanner
                 foreach (var name in key.GetValueNames())
                 {
                     var e = Add("普通登录启动", name, $"{label}\\{baseKey}\\{suffix}", Value(key, name), owner, view == RegistryView.Registry64 ? "64" : "32");
-                    e.OneShot = suffix.StartsWith("RunOnce"); e.Enabled = ReadApproval(root, name, view == RegistryView.Registry64 ? "Run" : "Run32");
+                    e.OneShot = suffix.StartsWith("RunOnce"); e.Enabled = ReadApproval(approvalRoot??root, name, view == RegistryView.Registry64 ? "Run" : "Run32");
                     if (e.OneShot) e.Enabled = null;
                     e.Mode = e.OneShot ? "一次性登录配置" : e.Enabled.HasValue ? "登录" : "登录状态未确认";
                     e.Configuration["enabled"] = e.Enabled?.ToString() ?? "unknown";
@@ -262,6 +277,7 @@ public sealed class WindowsScanner
                 using var parameters = key.OpenSubKey("Parameters"); var dll = Value(parameters, "ServiceDll");
                 e.Payload = dll; e.Configuration["serviceDll"] = dll;
                 e.Evidence["显示名称"] = Value(key, "DisplayName"); e.Evidence["执行账户"] = Value(key, "ObjectName");
+                e.Configuration["delayedAutoStart"]=Value(key,"DelayedAutoStart");
                 e.Evidence["依赖"] = Value(key, "DependOnService"); e.Evidence["延迟启动"] = Value(key, "DelayedAutoStart");
                 e.Configuration["dependencies"] = Value(key, "DependOnService");
                 using var triggers = key.OpenSubKey("TriggerInfo"); e.Evidence["触发器登记"] = triggers is null ? "无" : string.Join(", ", triggers.GetSubKeyNames());
