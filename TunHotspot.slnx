@@ -1,0 +1,14 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+    <File Path="CHANGELOG.md" />
+    <File Path="build.ps1" />
+    <File Path="NuGet.Config" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/TunHotspot.WinUI/TunHotspot.WinUI.csproj" />
+  </Folder>
+</Solution>

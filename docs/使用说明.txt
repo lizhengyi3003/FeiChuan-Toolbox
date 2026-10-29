@@ -1,0 +1,22 @@
+TUN 热点助手 1.0.1
+
+1. 在 Kumiryo 中手动开启 TUN。
+2. 打开 TUN 热点助手，点击“开启兼容热点”。
+3. 手机连接原来的电脑热点。
+4. 不用时点击“关闭热点”；关闭 TUN 前先关闭热点。
+
+关闭助手窗口会保留热点状态，重新打开可以继续操作。
+助手不会自动切换网络或重启 Kumiryo。
+启动后显示“热点已开启”时可以直接使用，无需重新关闭再开启。
+
+安装：双击安装程序并选择目录，可安装到 D 盘。
+便携使用：保留整个发布目录，运行 TunHotspot.exe。
+卸载：Windows 设置 → 应用 → 已安装的应用 → TUN 热点助手。
+更新和卸载前，请先手动关闭助手窗口。
+
+若显示 TUN 未连接，请检查 Kumiryo 的 TUN 是否开启。
+若操作报错，请先确认电脑本身可以上网，再按界面提示操作。
+
+操作日志：%LOCALAPPDATA%\TunHotspot.WinUI\operations.jsonl
+当前状态：%LOCALAPPDATA%\TunHotspot.WinUI\state.json
+日志不记录热点密码、SSID、MAC 或代理订阅凭据。
