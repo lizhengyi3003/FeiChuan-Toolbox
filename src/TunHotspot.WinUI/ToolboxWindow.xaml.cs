@@ -31,6 +31,7 @@ public sealed partial class ToolboxWindow : Window
     private readonly UISettings _uiSettings = new();
     private readonly AccessibilitySettings _accessibility = new();
     private TrayIcon? _tray;
+    private TrayMenuWindow? _trayMenu;
     private ScanSnapshot? _snapshot;
     private UserSettings _settings;
     private CancellationTokenSource? _adminStop;
@@ -77,12 +78,9 @@ public sealed partial class ToolboxWindow : Window
         try
         {
             if (qa) throw new OperationCanceledException("离屏 UI 验证不注册托盘。");
-            _tray = new(handle, () => _settings.Paused);
-            _tray.Command += async command =>
-            {
-                if(command=="open")Show();else if(command=="alerts"){Show();Navigate("alerts");}
-                else if(command=="scan")await GlobalScan();else if(command=="pause")await Pause();else ExitToolbox();
-            };
+            _tray = new(handle);
+            _tray.Command += HandleTrayCommand;
+            _tray.MenuRequested += (x,y)=>DispatcherQueue.TryEnqueue(()=>OpenTrayMenu(x,y));
             _tray.SessionEnding += () => _exiting = true;
             _tray.FontsChanged += () => _=LoadFonts();
             _tray.Resumed += () => { _monitor.Reconcile("登录界面或电源恢复");_=Poll(); };
@@ -98,10 +96,43 @@ public sealed partial class ToolboxWindow : Window
     }
     internal void Show(){AppWindow.Show();Activate();}
     internal void ReportError(string message)=>Tell("操作未完成",message,InfoBarSeverity.Error);
+    private TrayMenuState TrayState()=>new(_settings,_serviceConnected,_adminBusy||_serviceScanRequested,_store.Alerts.Count(x=>!x.IsRead));
+    private void OpenTrayMenu(int x,int y)
+    {
+        try
+        {
+            if(_trayMenu is not null){_trayMenu.Activate();return;}
+            var menu=new TrayMenuWindow(TrayState(),HandleTrayCommand);_trayMenu=menu;
+            menu.Closed+=(_,_)=>{if(ReferenceEquals(_trayMenu,menu))_trayMenu=null;};menu.ShowAt(x,y);
+        }
+        catch(Exception ex){_trayMenu?.Dismiss();_trayMenu=null;ReportError(ex.Message);AppLog.Write("tray-menu-error",new{ex.Message});}
+    }
+    private async void HandleTrayCommand(string command)
+    {
+        try
+        {
+            if(command=="open")Show();else if(command is "alerts" or "settings"){Show();Navigate(command);}
+            else if(command=="scan"){Show();await GlobalScan();}else if(command=="pause")await Pause();else if(command=="exit")ExitToolbox();
+        }
+        catch(Exception ex){ReportError(ex.Message);}
+    }
     internal async Task CaptureForQa(string page)
     {
         try
         {
+            if(page is "tray" or "tray-dark" or "tray-interactive")
+            {
+                _settings.Theme=page=="tray-dark"?"深色":"浅色";
+                var invoked=new TaskCompletionSource<string>();
+                var menu=new TrayMenuWindow(TrayState(),command=>{AppLog.Write("qa-tray-invoked",new{command});invoked.TrySetResult(command);},true);
+                try
+                {
+                    var area=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;menu.ShowAt(area.X+area.Width-30,area.Y+area.Height-30);
+                    await menu.CaptureForQa(page);
+                    if(page=="tray-interactive")await Task.WhenAny(invoked.Task,Task.Delay(15000));
+                }
+                finally{menu.Dismiss();}return;
+            }
             if (!new[] { "overview", "entries", "apps", "runtime", "pending", "alerts", "changes", "hotspot", "settings" }.Contains(page)) throw new InvalidDataException("未知验证页面。");
             await Task.Delay(1200); Navigate(page); await Task.Delay(700);
             // RenderTargetBitmap validates this application's actual XAML tree even on a locked desktop.
@@ -128,7 +159,7 @@ public sealed partial class ToolboxWindow : Window
     private void Cleanup()
     {
         if(!_qa)_store.Settings=_settings;
-        _poll.Stop();_adminStop?.Cancel();_tray?.Dispose();NotificationBridge.Close();_monitor.Dispose();
+        _poll.Stop();_adminStop?.Cancel();_trayMenu?.Dismiss();_tray?.Dispose();NotificationBridge.Close();_monitor.Dispose();
         AppLog.Write("toolbox-closed",new {networkChanged=false,machineMonitorMayContinue=_serviceConnected});
     }
     private void ExitToolbox(){_exiting=true;Close();}
@@ -407,6 +438,7 @@ public sealed partial class ToolboxWindow : Window
         _settings.Paused=!_settings.Paused;_monitor.Paused=_settings.Paused;
         if(_serviceConnected)await AdminClient.Service(new(){Kind="pause",Text=_settings.Paused?"true":"false"});
         SaveSettings();Tell(_settings.Paused?"监测已暂停":"监测已恢复","手动扫描仍可使用；没有停止其他服务或改变热点。");if(_page=="settings")RenderPage();
+        _tray?.Update($"TunHotspot · {(_settings.Paused?"监测已暂停":"监测运行中")} · 未读提醒 {_store.Alerts.Count(x=>!x.IsRead)}");
     }
     private async Task Poll()
     {

@@ -10,14 +10,14 @@ internal sealed class TrayIcon : IDisposable
     private readonly uint _taskbar;
     private nint _icon;
     private bool _disposed;
-    private readonly Func<bool> _paused;
     internal event Action<string>? Command;
+    internal event Action<int,int>? MenuRequested;
     internal event Action? SessionEnding;
     internal event Action? FontsChanged;
     internal event Action? Resumed;
-    internal TrayIcon(nint window, Func<bool> paused)
+    internal TrayIcon(nint window)
     {
-        _window = window; _paused = paused; _procedure = Procedure;
+        _window = window; _procedure = Procedure;
         _taskbar = RegisterWindowMessage("TaskbarCreated");
         _icon = LoadImage(0, Path.Combine(AppContext.BaseDirectory,"Assets","TunHotspot.ico"),1,32,32,0x10);
         if (!SetWindowSubclass(_window,_procedure,71,0)) throw new InvalidOperationException("托盘窗口回调注册失败。");
@@ -36,22 +36,19 @@ internal sealed class TrayIcon : IDisposable
         {
             uint action=(uint)((long)lParam&0xffff);
             if(action is 0x0202 or 0x0400 or 0x0401)Command?.Invoke("open");
-            else if(action is 0x0205 or 0x007B)Menu();
+            else if(action is 0x0205 or 0x007B)
+            {
+                int x=unchecked((short)((long)wParam&0xffff)),y=unchecked((short)(((long)wParam>>16)&0xffff));
+                if(x==-1&&y==-1)
+                {
+                    var identity=new NotifyIdentity{Size=(uint)Marshal.SizeOf<NotifyIdentity>(),Window=_window,Id=71,Guid=new Guid("76D7FD9A-1281-47E6-86C0-BCA9368C1217")};
+                    if(Shell_NotifyIconGetRect(ref identity,out var bounds)==0){x=(bounds.Left+bounds.Right)/2;y=bounds.Top;}else{GetCursorPos(out var point);x=point.X;y=point.Y;}
+                }
+                MenuRequested?.Invoke(x,y);
+            }
             return 0;
         }
         return DefSubclassProc(window,message,wParam,lParam);
-    }
-    private void Menu()
-    {
-        var menu=CreatePopupMenu();
-        try
-        {
-            AppendMenu(menu,0,1,"打开工具箱");AppendMenu(menu,0,2,"全局扫描（管理员）");AppendMenu(menu,0,3,"通知与事件");
-            AppendMenu(menu,0,4,_paused()?"恢复监测":"暂停监测");AppendMenu(menu,0x800,0,"");AppendMenu(menu,0,5,"退出托盘（机器采集可能继续）");
-            GetCursorPos(out var point);SetForegroundWindow(_window);uint choice=TrackPopupMenu(menu,0x100|2,point.X,point.Y,0,_window,0);PostMessage(_window,0,0,0);
-            if(choice>0)Command?.Invoke(choice switch{1=>"open",2=>"scan",3=>"alerts",4=>"pause",_=>"exit"});
-        }
-        finally{DestroyMenu(menu);}
     }
     public void Dispose(){if(_disposed)return;_disposed=true;var data=Data();Shell_NotifyIcon(2,ref data);RemoveWindowSubclass(_window,_procedure,71);if(_icon!=0)DestroyIcon(_icon);}
     [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]private struct NotifyData
@@ -62,6 +59,8 @@ internal sealed class TrayIcon : IDisposable
         [MarshalAs(UnmanagedType.ByValTStr,SizeConst=64)]public string Title;public uint InfoFlags;public Guid Guid;public nint BalloonIcon;
     }
     [StructLayout(LayoutKind.Sequential)]private struct Point{public int X,Y;}
+    [StructLayout(LayoutKind.Sequential)]private struct Rect{public int Left,Top,Right,Bottom;}
+    [StructLayout(LayoutKind.Sequential)]private struct NotifyIdentity{public uint Size;public nint Window;public uint Id;public Guid Guid;}
     private delegate nint SubclassProc(nint hwnd,uint message,nint wParam,nint lParam,nuint id,nuint data);
     [DllImport("shell32.dll",CharSet=CharSet.Unicode)]private static extern bool Shell_NotifyIcon(uint message,ref NotifyData data);
     [DllImport("comctl32.dll")]private static extern bool SetWindowSubclass(nint hwnd,SubclassProc proc,nuint id,nuint data);
@@ -70,11 +69,6 @@ internal sealed class TrayIcon : IDisposable
     [DllImport("user32.dll",CharSet=CharSet.Unicode)]private static extern uint RegisterWindowMessage(string value);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)]private static extern nint LoadImage(nint instance,string name,uint type,int x,int y,uint flags);
     [DllImport("user32.dll")]private static extern bool DestroyIcon(nint icon);
-    [DllImport("user32.dll")]private static extern nint CreatePopupMenu();
-    [DllImport("user32.dll",CharSet=CharSet.Unicode)]private static extern bool AppendMenu(nint menu,uint flags,nuint id,string text);
-    [DllImport("user32.dll")]private static extern uint TrackPopupMenu(nint menu,uint flags,int x,int y,int reserved,nint hwnd,nint rectangle);
-    [DllImport("user32.dll")]private static extern bool DestroyMenu(nint menu);
+    [DllImport("shell32.dll")]private static extern int Shell_NotifyIconGetRect(ref NotifyIdentity identity,out Rect bounds);
     [DllImport("user32.dll")]private static extern bool GetCursorPos(out Point point);
-    [DllImport("user32.dll")]private static extern bool SetForegroundWindow(nint hwnd);
-    [DllImport("user32.dll")]private static extern bool PostMessage(nint hwnd,uint message,nint wParam,nint lParam);
 }

@@ -44,6 +44,8 @@ codex mcp add TunHotspotStartup -- 'D:\MyTools\TunHotspot\Engine\TunHotspot.Engi
 
 支持 Acrylic、Mica、MicaAlt、None、主题、DirectWrite 字体枚举/刷新和字号，不实现 Aero。系统透明策略与高对比度优先。关闭窗口默认收起到托盘，可扫描、打开通知、暂停和退出。保存窗口位置，并修正到可见工作区。
 
+软件自身界面统一使用 WinUI 3，包括独立托盘弹出窗口、按钮、外观、对话框与进度展示。托盘菜单跟随主题/字体/材质，支持失焦收起、Esc、上下键和工作区定位；不使用 WinForms、WPF 或传统 Win32 菜单。Windows 托盘图标、系统授权、系统通知和系统文件选择仍调用相应的 Windows 接口。
+
 热点仅由“开启兼容热点/关闭热点”按钮改变；启动、扫描、退出不会开关热点或改 Kumiryo、DNS、防火墙、分流。新电脑的网卡/TUN 仍需核对。
 
 ## 数据、组件和卸载
