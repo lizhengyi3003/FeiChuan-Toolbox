@@ -6,7 +6,7 @@ using Windows.Graphics;
 
 namespace TunHotspot;
 
-public sealed partial class MainWindow : Window
+public sealed partial class HotspotPage : UserControl
 {
     private readonly HotspotService _service = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -18,24 +18,12 @@ public sealed partial class MainWindow : Window
     private int _startRequests;
     private int _stopRequests;
 
-    public MainWindow()
+    public HotspotPage()
     {
         InitializeComponent();
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(TitleArea);
-        var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "TunHotspot.ico"));
-        var scale = GetDpiForWindow(handle) / 96.0;
-        var size = new SizeInt32((int)(610 * scale), (int)(570 * scale));
-        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
-        AppWindow.MoveAndResize(new RectInt32(area.X + (area.Width - size.Width) / 2,
-            area.Y + (area.Height - size.Height) / 2, size.Width, size.Height));
-        if (AppWindow.Presenter is OverlappedPresenter presenter) presenter.IsResizable = false;
         _timer.Tick += async (_, _) => await RefreshAsync();
-        Closed += (_, _) => { _closed = true; _timer.Stop(); AppLog.Write("window-closed", new { networkChanged = false }); };
-        _timer.Start();
-        AppLog.Write("window-opened", new { networkChanged = false });
-        _ = RefreshAsync();
+        Unloaded += (_, _) => { _closed = true; _timer.Stop(); };
+        Loaded += async (_, _) => { _closed = false; _timer.Start(); await RefreshAsync(); };
     }
 
     private async Task RefreshAsync()

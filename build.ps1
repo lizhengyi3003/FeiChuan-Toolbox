@@ -1,4 +1,4 @@
-param([ValidateSet('Debug','Release')][string]$Configuration='Release',[switch]$Publish,[switch]$Offline)
+param([ValidateSet('Debug','Release')][string]$Configuration='Release',[switch]$Publish,[switch]$Offline,[string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 $localSdk=Join-Path $PSScriptRoot '.tools\dotnet\dotnet.exe'
 $systemDotnet=Get-Command dotnet.exe -ErrorAction SilentlyContinue
@@ -18,15 +18,27 @@ try {
     $env:DOTNET_CLI_TELEMETRY_OPTOUT='1'
     $env:MSBuildEnableWorkloadResolver='false'
     $project=Join-Path $PSScriptRoot 'src\TunHotspot.WinUI\TunHotspot.WinUI.csproj'
+    $engine=Join-Path $PSScriptRoot 'src\TunHotspot.Engine\TunHotspot.Engine.csproj'
+    if(-not $OutputDirectory){$OutputDirectory=Join-Path $PSScriptRoot 'artifacts\toolbox-preview'}
     New-Item -ItemType Directory -Path (Join-Path $PSScriptRoot '.tools\winui-build-tools\feed') -Force | Out-Null
-    $restoreArgs=@('restore',$project,'-p:Platform=x64')
+    $restoreArgs=@('restore',$project,'-p:Platform=x64','-p:NuGetAudit=false')
     if($Offline){$restoreArgs+=@('--source',(Join-Path $PSScriptRoot '.tools\winui-build-tools\feed'))}
     & $dotnet @restoreArgs
     if($LASTEXITCODE){throw 'NuGet 还原失败。'}
+    $engineRestore=@('restore',$engine,'-p:Platform=x64','-p:NuGetAudit=false')
+    if($Offline){$engineRestore+=@('--source',(Join-Path $PSScriptRoot '.tools\winui-build-tools\feed'))}
+    & $dotnet @engineRestore
+    if($LASTEXITCODE){throw '采集引擎还原失败。'}
     if($Publish){
-        & $dotnet publish $project -c $Configuration -p:Platform=x64 --no-restore -o (Join-Path $PSScriptRoot 'artifacts\win-x64')
+        & $dotnet publish $project -c $Configuration -p:Platform=x64 --no-restore -o $OutputDirectory
+        if($LASTEXITCODE){throw '界面发布失败。'}
+        & $dotnet publish $engine -c $Configuration -p:Platform=x64 --no-restore -o (Join-Path $OutputDirectory 'Engine')
+        if($LASTEXITCODE){throw '采集引擎发布失败。'}
+        & (Join-Path $PSScriptRoot 'tools\Prepare-Distribution.ps1') -PublishDirectory $OutputDirectory
     }else{
         & $dotnet build $project -c $Configuration -p:Platform=x64 --no-restore
+        if($LASTEXITCODE){throw '界面编译失败。'}
+        & $dotnet build $engine -c $Configuration -p:Platform=x64 --no-restore
     }
     if($LASTEXITCODE){throw '编译失败。'}
 } finally {

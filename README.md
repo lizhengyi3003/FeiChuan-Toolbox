@@ -1,74 +1,80 @@
-# TUN 热点助手
+# TUN 热点与启动工具箱
 
-原生 C# / WinUI 3 小工具，让 Windows 移动热点使用当前 Kumiryo TUN 连接共享网络。适用于普通 Windows 热点与 Kumiryo TUN 同开后，电脑或手机断网的已验证场景。
+WinUI 3 / .NET 10 的 Windows 11 x64 工具箱，包含原有 Kumiryo TUN 热点、启动入口扫描、保守分类、持续观察、状态偏离提醒和 Codex 待分析区。当前版本 **1.1.0，只读监测版**。
 
-![应用图标](src/TunHotspot.WinUI/Assets/TunHotspot.png)
+## 使用与分发
 
-当前版本 **1.0.1 · Windows x64**。本项目位于 `D:\project\winUI\TunHotspot`，源代码、构建工具缓存、便携软件和安装包均在此目录内。Visual Studio、Windows SDK 和系统 .NET SDK 继续由各自安装器管理。
+- 安装包：`artifacts/installer/TunHotspot-1.1.0-Setup-x64.exe`
+- 便携包：`artifacts/distribution/TunHotspot-1.1.0-win11-x64.zip`
+- 直接运行：`artifacts/toolbox-preview/TunHotspot.exe`
+- [使用说明](docs/使用说明.txt)
+- [采集能力与验证记录](docs/启动管理-能力与验证.md)
 
-## 直接使用
+便携版须保留整个目录。包含 .NET、WinUI、app-local VC++ 运行文件；使用者不需要 SDK、Visual Studio、开发机路径、Codex 或 API 密钥。包内不携带本机扫描结果与用户数据库。首次复制到另一台电脑后建立独立本地数据。安装器为当前用户安装，默认无需管理员。
 
-便携版入口为 `artifacts\win-x64\TunHotspot.exe`，桌面的“TUN 热点助手”快捷方式指向该程序。保留整个 `win-x64` 目录，不能只取走 exe。
+已在断网、没有 .NET SDK/Codex 的干净 Windows 11 26100 沙盒验证复制到带空格的目录后运行。其他 Windows 11 构建和 ARM64 尚未逐一验证。程序与安装器未签名，提供 SHA-256。原始 1.0.1 发布目录 `artifacts/win-x64` 保留。
 
-1. 在 Kumiryo 中手动开启 TUN。
-2. 打开助手，点击“开启兼容热点”。
-3. 手机连接电脑原来的热点。界面会显示热点状态、TUN 状态和已连接设备数量。
-4. 不用时点击“关闭热点”；准备关闭 TUN 时先关闭热点。
+## 扫描与持续监测
 
-![WinUI 3 界面](docs/images/main-window.png)
+打开后先建立普通权限基线；顶部全局扫描通过 UAC 单次采集，或调用已安装的 LocalSystem 机器组件。显示真实阶段进度、取消状态和覆盖缺口；无法重新确认的旧入口保留并标记，不推定已删除。
 
-启动、刷新和关闭助手窗口会保留当前热点状态。程序只在用户点击按钮时开关热点，不重启 Kumiryo，也不改订阅、分流规则、DNS、防火墙、热点名称或密码。软件没有添加开机启动项。
+采集 Run/RunOnce/StartupApproved、启动文件夹、可访问账户、打包应用启动、服务/驱动、计划任务 XML/COM 动作、Winlogon/Session Manager/LSA/AppInit/IFEO 等间接入口、批准的 Shell 扩展、打印/网络提供程序、WMI 永久订阅和当前进程。详见能力表。登记不等于常驻，父 PID 不等于确定启动原因。
 
-## 安装与卸载
+默认每 5 分钟补扫；注册表连续订阅、5 秒状态采样、目录变化和任务 ETW 提供提前核对线索，并防抖。机器组件采集 ETW 进程创建/退出，记录事件丢失和持久化故障。普通模式明确说明权限范围。
 
-安装包：`artifacts\installer\TunHotspot-1.0.1-Setup-x64.exe`。
+在其他软件中设好状态后，重新扫描并点击“监视当前状态”。偏离先写持久告警，再提交 Windows 通知。可以搜索历史、标记已读、重发及重新关注，恢复后结案，再次偏离形成新事件。不自动争抢写入，不推定修改者，也不保证绕过系统或厂商保护。设置和任务管理器可能操作同一配置。
 
-双击安装包，选择目录后安装。默认安装到当前用户的 `%LOCALAPPDATA%\Programs\TunHotspot`，也可以选择 D 盘其他目录；默认创建桌面及开始菜单入口。安装包包含 .NET 与 WinUI 运行库，使用者不需要安装 Visual Studio。
+## 分类与 Codex 分析
 
-通过 Windows“设置 → 应用 → 已安装的应用 → TUN 热点助手”卸载。安装和卸载都不会自动开关热点。更新/卸载前需手动关闭助手窗口，Kumiryo 可以继续运行；操作日志默认保留。
+建议分为建议保留、按需保留、可考虑取消、需修复、待分析。规则带版本且属于启发式；签名未知不等于恶意。未知项目自动进入待分析区，用户可选择条目和记录用途。
 
-本地制作的应用和安装包尚未做代码签名。随包提供 `.sha256` 校验文件；安装包不会关闭 SmartScreen。
+待分析页可注册本机 STDIO MCP，然后在 Codex 中请求分析。也可导出带预览的脱敏 JSON、导入结果。单批最多 100 项，校验本机、批次、当前配置/文件/用途指纹和字段，只更新建议库，不执行模型返回的命令。不读取聊天数据库或账号登录凭据。
 
-## 开发与构建
+本地桥接工具：`startup_list_pending`、`startup_get_analysis_bundle`、`startup_get_evidence`、`startup_submit_analysis`。不提供任意文件/脚本/SQL/系统修改接口。连接方法参考 [OpenAI 官方文档](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)。
 
-开发环境：Windows、.NET 10 或更高 SDK、Windows SDK 10.0.26100、WinUI 3 开发组件。应用目标为 .NET 10、Windows SDK 26100，最低声明支持 Windows 10 19041；实际热点功能目前只在本机 Windows 11 / Kumiryo 环境验收。
-
-使用 Visual Studio 打开 `TunHotspot.slnx`，选择 x64。也可以在项目根目录运行：
+手动注册时，将下面路径换为实际安装路径：
 
 ```powershell
-# 发布便携版。会进行 NuGet 还原。
+codex mcp add TunHotspotStartup -- 'D:\MyTools\TunHotspot\Engine\TunHotspot.Engine.exe' --mcp
+```
+
+按客户端提示刷新连接或开始后续对话。连接成功不等于已启动分析。移动目录后重新注册；移除连接用 `codex mcp remove TunHotspotStartup`。AI 可选，不另设 API 调用或密钥要求。
+
+## 外观、托盘和热点
+
+支持 Acrylic、Mica、MicaAlt、None、主题、DirectWrite 字体枚举/刷新和字号，不实现 Aero。系统透明策略与高对比度优先。关闭窗口默认收起到托盘，可扫描、打开通知、暂停和退出。保存窗口位置，并修正到可见工作区。
+
+热点仅由“开启兼容热点/关闭热点”按钮改变；启动、扫描、退出不会开关热点或改 Kumiryo、DNS、防火墙、分流。新电脑的网卡/TUN 仍需核对。
+
+## 数据、组件和卸载
+
+用户数据库在 `%LOCALAPPDATA%\TunHotspot.Toolbox`，操作日志在 `%LOCALAPPDATA%\TunHotspot.WinUI`。SQLite WAL/事务；普通事件默认 7 天、快照 30 天，事件逻辑容量超过 450 MiB 时清理最旧一部分。告警和建议历史独立保存，物理空间回收取决于 SQLite；不保证磁盘写满时仍持久保存。
+
+机器组件按用户操作经 UAC 安装到受控 `%ProgramFiles%\TunHotspot\Monitor`，机器数据在受控 `%ProgramData%\TunHotspot\Monitor`。服务名 `TunHotspotStartupMonitor`，当前用户登录入口 `TunHotspot.Toolbox.Agent`。使用版本目录、复制校验、数据库备份、失败服务路径回退；拒绝用户预占的受控目录和重解析点。
+
+UI/通知继续以普通权限运行。机器组件只接受核实账户的有限 IPC。退出托盘不卸载服务；暂停状态单独保存。卸载组件删除自身服务和登录入口，保留历史及受控版本以供恢复。移动便携目录后重新安装/更新组件，以刷新托盘启动路径。
+
+安装器更新/卸载前要求用户退出托盘，不终止其他软件。有组件时卸载先提示 UAC；静默卸载须先移除组件。当前版本不禁用、删除其他软件入口。
+
+## 构建与检查
+
+开发环境需要 Windows x64、.NET 10 或更高 SDK、Windows SDK 26100、WinUI 构建工具。核心依赖为 WindowsAppSDK.WinUI 2.6.4、.NET 10.0.14、TraceEvent 4.0.0。当前机器 SDK 11 RC 的构建提示不改变 .NET 10 自包含目标。
+
+```powershell
 .\build.ps1 -Publish
-
-# 使用本机已迁入的完整依赖缓存离线发布。
-.\build.ps1 -Publish -Offline
-
-# 重新生成原创 ICO / PNG 图标。
-.\tools\Generate-Icon.ps1
-
-# 准备便携 Inno Setup 7 编译器，仅首次需要。
-.\tools\Initialize-InstallerTools.ps1
-
-# 将已发布目录打成安装包，输出 SHA-256。
+.\build.ps1 -Publish -Offline # 需要已准备的 NuGet 缓存/本地 feed
 .\tools\Build-Installer.ps1
+# 测试项目需要 MSBuildEnableWorkloadResolver=false（当前预览 SDK 环境）
+dotnet run --project src\TunHotspot.Tests -c Release
 ```
 
-首次从纯源码复制项目时，`.tools` 不包含在版本控制内，需要联网还原 NuGet 依赖并初始化安装编译器。已有的本地缓存已随项目迁移，可直接使用。
+默认输出 `artifacts/toolbox-preview`，不覆盖 1.0.1。`Prepare-Distribution.ps1` 收集签名有效的官方 VC/Redist、依赖许可证和校验表。安装器使用 Inno Setup 7，可运行 `tools/Initialize-InstallerTools.ps1` 准备。
 
-## 目录
+`tools/Test-WindowsSandbox.ps1` 使用已有 Windows Sandbox，关闭网络/剪贴板共享，只读映射发布文件。组件测试脚本拒绝在宿主机执行。XAML 截图用于布局验证，不代表原生材质的视觉验收。完整重启轨迹、通知点击唤回与不同硬件仍需后续实际验证。
 
-```text
-TunHotspot/
-├─ TunHotspot.slnx                 Visual Studio 解决方案
-├─ README.md / CHANGELOG.md        使用入口与版本记录
-├─ build.ps1 / NuGet.Config        构建、发布与依赖源
-├─ src/TunHotspot.WinUI/           C#、XAML、manifest、Assets 图标
-├─ installer/TunHotspot.iss        安装/卸载、快捷方式及运行检测
-├─ tools/                         图标生成与安装包构建脚本
-├─ docs/                          开发说明、操作说明、验收与历史
-├─ artifacts/win-x64/             可直接运行的完整便携软件
-├─ artifacts/installer/           安装程序与 SHA-256 校验文件
-├─ artifacts/qa/                  截图、文件迁移校验及安装验证证据
-└─ .tools/                        NuGet 缓存及便携安装编译器，不随软件分发
-```
+## 源码
 
-详见 [开发说明](docs/DEVELOPMENT.md)、[验收记录](docs/VALIDATION.md)、[常见问题](docs/TROUBLESHOOTING.md) 与 [第三方组件](docs/THIRD-PARTY-NOTICES.md)。`docs/history` 是本机问题排查的历史记录，当前使用入口以本 README 为准。
+- `TunHotspot.Core`：只读采集、分类、监测、SQLite、模型与 IPC。
+- `TunHotspot.Engine`：UAC 代理、机器组件、MCP。
+- `TunHotspot.WinUI`：普通权限界面、托盘、通知与热点。
+- `TunHotspot.Tests`：状态、持久化、边界和协议验证。

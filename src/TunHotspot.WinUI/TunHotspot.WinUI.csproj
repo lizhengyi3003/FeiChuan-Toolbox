@@ -2,7 +2,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
     <RootNamespace>TunHotspot</RootNamespace>
     <AssemblyName>TunHotspot</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -19,12 +19,13 @@
     <PublishTrimmed>false</PublishTrimmed>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>1.0.1</Version>
-    <Product>TUN 热点助手</Product>
-    <Description>通过 Kumiryo TUN 共享 Windows 移动热点</Description>
-    <ApplicationTitle>TUN 热点助手</ApplicationTitle>
+    <Version>1.1.0</Version>
+    <Product>TUN 热点与启动工具箱</Product>
+    <Description>WinUI 3 热点、启动入口扫描与后台运行监测工具箱</Description>
+    <ApplicationTitle>TUN 热点与启动工具箱</ApplicationTitle>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\TunHotspot.Core\TunHotspot.Core.csproj" />
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.6.4" />
     <Content Include="Assets\TunHotspot.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\TunHotspot.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

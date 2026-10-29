@@ -9,6 +9,9 @@
     <File Path="NuGet.Config" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/TunHotspot.Core/TunHotspot.Core.csproj" />
+    <Project Path="src/TunHotspot.Engine/TunHotspot.Engine.csproj" />
     <Project Path="src/TunHotspot.WinUI/TunHotspot.WinUI.csproj" />
+    <Project Path="src/TunHotspot.Tests/TunHotspot.Tests.csproj" />
   </Folder>
 </Solution>
