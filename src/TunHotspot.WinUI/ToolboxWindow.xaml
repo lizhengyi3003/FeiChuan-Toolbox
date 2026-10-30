@@ -10,7 +10,7 @@
    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
     <Image Source="Assets/TunHotspot.png" Width="22" Height="22"/>
     <TextBlock Text="TUN 热点与启动工具箱" FontSize="13"/>
-    <TextBlock Text="1.3 · 启动管理" FontSize="12" Opacity="0.6"/>
+    <TextBlock x:Name="VersionLabel" Text="启动管理" FontSize="12" Opacity="0.6"/>
    </StackPanel>
   </Grid>
   <Grid Grid.Row="1" Padding="22,10,22,14" RowSpacing="8" ColumnSpacing="12">

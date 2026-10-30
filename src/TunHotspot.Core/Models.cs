@@ -72,7 +72,7 @@ public sealed class StartupEntry
         : Mode=="自动"&&Configuration.GetValueOrDefault("delayedAutoStart")=="1"?"自动（延迟）" : Mode is "自动" or "手动" or "禁用" or "引导" or "系统" ? Mode : "状态未确认";
     [JsonIgnore] public string StateText => $"{ControlValue} · {State}".Trim(' ', '·');
     [JsonIgnore] public string Display => $"{Name} · {App}";
-    [JsonIgnore] public string Detail => $"{Category} · {StateText} · {EffectiveAdvice} · {Health}";
+    [JsonIgnore] public string Detail => (ObservationStatus=="本次读取"?"":"历史记录（本次未确认）；上次：")+$"{Category} · {StateText} · {EffectiveAdvice} · {Health}";
     public void Seal()
     {
         Id = Contract.Hash($"{Provider}|{Category}|{OwnerSid}|{View}|{Source}|{Name}".ToLowerInvariant());

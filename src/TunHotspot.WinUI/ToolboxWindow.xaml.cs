@@ -59,6 +59,7 @@ public sealed partial class ToolboxWindow : Window
     public ToolboxWindow(bool quiet = false, bool qa = false)
     {
         InitializeComponent(); _hotspotHost=new ScrollViewer{Content=_hotspot};_qa=qa;_settings = _store.Settings; _snapshot = _store.Latest;
+        VersionLabel.Text=Contract.ProductVersion+" · 启动管理";
         _store.ReconcilePending(_snapshot);
         _lastControlTime=_store.Get<DateTimeOffset>("lastControlTime");
         AttachDecisions();
