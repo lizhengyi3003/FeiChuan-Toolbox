@@ -9,6 +9,7 @@ WinUI 3 / .NET 10 的 Windows 11 x64 工具箱，包含原有 Kumiryo TUN 热点
 - 直接运行：`artifacts/toolbox-v1.3/TunHotspot.exe`
 - [使用说明](docs/使用说明.txt)
 - [采集能力与验证记录](docs/启动管理-能力与验证.md)
+- [架构与文件职责](docs/ARCHITECTURE.md) · [开发与发布](docs/DEVELOPMENT.md) · [验收索引](docs/VALIDATION.md)
 
 便携版须保留整个目录。包含 .NET、WinUI、app-local VC++ 运行文件；使用者不需要 SDK、Visual Studio、开发机路径、Codex 或 API 密钥。包内不携带本机扫描结果与用户数据库。首次复制到另一台电脑后建立独立本地数据。安装器为当前用户安装，默认无需管理员。
 
@@ -83,17 +84,17 @@ UI/通知继续以普通权限运行。机器组件只接受核实账户的有�
 
 ## 构建与检查
 
-开发环境需要 Windows x64、.NET 10 或更高 SDK、Windows SDK 26100、WinUI 构建工具。核心依赖为 WindowsAppSDK.WinUI 2.6.4、.NET 10.0.14、TraceEvent 4.0.0。当前机器 SDK 11 RC 的构建提示不改变 .NET 10 自包含目标。
+开发环境需要 Windows x64、.NET 10 或更高 SDK、Windows SDK 26100、WinUI 构建工具。产品版本与目标框架统一来自 `Directory.Build.props`；服务、MCP 和机器组件从程序集读取版本。核心依赖为 WindowsAppSDK.WinUI 2.6.4、.NET 10.0.14、TraceEvent 4.0.0。当前机器 SDK 11 RC 的提示不改变 .NET 10 自包含目标。
 
 ```powershell
 .\build.ps1 -Publish
 .\build.ps1 -Publish -Offline # 需要已准备的 NuGet 缓存/本地 feed
-.\tools\Build-Installer.ps1
+.\tools\Build-Release.ps1            # 空目录发布，同源安装包、ZIP、校验值
 # 测试项目需要 MSBuildEnableWorkloadResolver=false（当前预览 SDK 环境）
 dotnet run --project src\TunHotspot.Tests -c Release
 ```
 
-默认输出 `artifacts/toolbox-preview`；本次分发使用 `-OutputDirectory artifacts/toolbox-v1.3`，保留旧版。`Prepare-Distribution.ps1` 收集签名有效的官方 VC/Redist、依赖许可证和校验表。安装器使用 Inno Setup 7，可运行 `tools/Initialize-InstallerTools.ps1` 准备。
+开发发布默认输出 `artifacts/toolbox-preview`；正式发布入口默认使用新的空目录，拒绝夹带旧文件。本次分发使用 `-OutputDirectory artifacts/toolbox-v1.3`，旧构建另行保留。`Prepare-Distribution.ps1` 收集官方 VC/Redist、许可证与校验表，生成包内 `release.json`；包旁 `release-1.3.0.json` 关联版本、提交及安装/便携包 SHA-256。安装器使用 Inno Setup 7，可运行 `tools/Initialize-InstallerTools.ps1` 准备。
 
 `tools/Test-WindowsSandbox.ps1` 使用已有 Windows Sandbox，关闭网络/剪贴板共享，只读映射发布文件。组件测试脚本拒绝在宿主机执行。XAML 截图用于布局验证，不代表原生材质的视觉验收。完整重启轨迹、通知点击唤回与不同硬件仍需后续实际验证。
 

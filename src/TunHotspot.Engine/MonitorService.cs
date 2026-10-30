@@ -34,7 +34,7 @@ internal sealed class MonitorService : ServiceBase
                 var request=await Wire.Receive(pipe,timeout.Token);WireMessage response;
                 switch(request.Kind)
                 {
-                    case "status":response=new(){Kind="status",Text="1.3.0",MonitorState=_monitor!.State,ScanCancelled=_monitor.LastScanCancelled,Progress=_monitor.Scanning?_monitor.CurrentProgress:null,Snapshot=store.Latest,Alerts=store.Alerts,Events=store.Events(500)};break;
+                    case "status":response=new(){Kind="status",Text=Contract.ProductVersion,MonitorState=_monitor!.State,ScanCancelled=_monitor.LastScanCancelled,Progress=_monitor.Scanning?_monitor.CurrentProgress:null,Snapshot=store.Latest,Alerts=store.Alerts,Events=store.Events(500)};break;
                     case "scan": _=Task.Run(()=>_monitor!.ScanNow(stop),stop);response=new(){Kind="complete",Text="已提交机器全局扫描"};break;
                     case "cancelScan":_monitor!.CancelScan();response=new(){Kind="complete",Text="已请求取消本软件当前采集"};break;
                     case "watch":

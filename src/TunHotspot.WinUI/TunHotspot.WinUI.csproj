@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
     <RootNamespace>TunHotspot</RootNamespace>
     <AssemblyName>TunHotspot</AssemblyName>
@@ -17,9 +16,6 @@
     <WindowsAppSDKDeploymentManagerInitialize>false</WindowsAppSDKDeploymentManagerInitialize>
     <SelfContained>true</SelfContained>
     <PublishTrimmed>false</PublishTrimmed>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Version>1.3.0</Version>
     <Product>TUN 热点与启动工具箱</Product>
     <Description>WinUI 3 热点、启动入口扫描与后台运行监测工具箱</Description>
     <ApplicationTitle>TUN 热点与启动工具箱</ApplicationTitle>

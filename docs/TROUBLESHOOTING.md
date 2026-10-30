@@ -16,17 +16,19 @@
 
 ## exe 单独复制后打不开
 
-使用安装包，或完整复制 `artifacts/win-x64`。运行目录必须包含 WinUI、.NET 运行库、`TunHotspot.pri` 和 Assets 图标。无需另行安装开发工具。
+使用当前安装包，或完整解压 `artifacts/distribution` 中的当前便携包。必须保留 Engine、WinUI、.NET 运行库、PRI、Assets 及其他依赖，不能只复制 exe。`artifacts/win-x64` 是保留的 1.0.1 历史版，无需另行安装开发工具。
 
 ## 安装器提示助手正在运行
 
-先手动关闭助手窗口，再继续安装或卸载；关闭窗口会保留当前热点。Kumiryo 可继续运行。安装器不会强制结束任何进程。
+先从托盘菜单选择“退出”，再继续安装或卸载；仅关闭窗口默认收起到托盘。退出保留当前热点，Kumiryo 可继续运行。安装器不会强制结束其他进程。
 
 ## 图标暂时显示旧样式
 
 重新打开快捷方式。应用窗口、exe 和安装包都已内置 ICO；Windows 可能暂时缓存旧的桌面图标，不需要为此重启代理或断开网络。
 
 ## 查看记录
+
+工具箱的扫描、建议、告警、来源标记及两轮审计在 `%LOCALAPPDATA%\TunHotspot.Toolbox`。总览显示当前权限和缺口；“最近管理员复核”是历史复核结果，不保证之后未变化。待分析保留项可能缺少当前或目标证据，不能通过猜测结论清空。
 
 操作记录：`%LOCALAPPDATA%\TunHotspot.WinUI\operations.jsonl`。
 当前状态：`%LOCALAPPDATA%\TunHotspot.WinUI\state.json`。

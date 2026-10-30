@@ -45,6 +45,11 @@ These are Microsoft redistributable runtime files; no developer tools, user conf
 All application/runtime package license files available in the NuGet packages are collected in this directory.
 '@ | Set-Content -LiteralPath (Join-Path $notices 'DISTRIBUTION.txt') -Encoding utf8
 # Remove only PDB files under this explicitly resolved publish directory. No recursive directory deletion.
+[xml]$properties=Get-Content -LiteralPath (Join-Path $root 'Directory.Build.props')
+$sourceCommit=(& git -C $root rev-parse HEAD 2>$null)
+if($LASTEXITCODE){throw '无法读取发布对应的 Git 提交。'}
+$sourceDirty=[bool](& git -C $root status --porcelain --untracked-files=no)
+[ordered]@{version=[string]$properties.Project.PropertyGroup.Version;targetFramework=[string]$properties.Project.PropertyGroup.TargetFramework;runtimeIdentifier='win-x64';selfContained=$true;sourceCommit=[string]$sourceCommit;sourceDirty=$sourceDirty;builtAt=[DateTimeOffset]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $publish 'release.json') -Encoding utf8
 foreach($pdb in Get-ChildItem -LiteralPath $publish -Recurse -File -Filter '*.pdb'){
     if(-not $pdb.FullName.StartsWith($publish+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw '发布路径边界检查失败。'}
     Remove-Item -LiteralPath $pdb.FullName

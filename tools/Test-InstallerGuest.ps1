@@ -6,7 +6,8 @@ try{
     $setup=Start-Process -FilePath 'C:\TestScripts\Toolbox-Setup.exe' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER',('/DIR="'+$install+'"'),'/LOG="C:\TestResults\installer-install.log"' -PassThru -Wait
     if(-not(Test-Path (Join-Path $install 'Engine\TunHotspot.Engine.exe'))){throw '安装后引擎不存在。'}
     $result.Version=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $install 'TunHotspot.exe')).ProductVersion
-    if($result.Version -notlike '1.3.0*'){throw '安装后版本不正确。'}
+    $expected=Get-Content -LiteralPath 'C:\Application\release.json' -Raw | ConvertFrom-Json
+    if($result.Version.Split('+')[0] -ne $expected.version){throw '安装后版本不正确。'}
     $result.Checks+='当前用户安装到自定义含空格路径'
     $checked=0
     foreach($line in Get-Content -LiteralPath (Join-Path $install 'files.sha256')){

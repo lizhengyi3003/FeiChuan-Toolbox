@@ -1,5 +1,5 @@
 ﻿#ifndef AppVersion
-  #define AppVersion "1.3.0"
+  #error 请通过 tools/Build-Installer.ps1 提供统一的 AppVersion
 #endif
 #define ProjectRoot AddBackslash(SourcePath) + ".."
 #ifndef PublishDir

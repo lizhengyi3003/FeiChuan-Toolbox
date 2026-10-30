@@ -12,8 +12,12 @@ if(-not $CompilerPath){throw '请先运行 tools\Initialize-InstallerTools.ps1�
 foreach($file in @('TunHotspot.exe','TunHotspot.pri','Assets\TunHotspot.ico','Engine\TunHotspot.Engine.exe','files.sha256')){
     if(-not(Test-Path -LiteralPath (Join-Path $PublishDirectory $file))){throw "发布文件缺失：$file。请先运行 build.ps1 -Publish。"}
 }
-[xml]$project=Get-Content -LiteralPath "$root\src\TunHotspot.WinUI\TunHotspot.WinUI.csproj"
+[xml]$project=Get-Content -LiteralPath "$root\Directory.Build.props"
 $version=[string]$project.Project.PropertyGroup.Version
+foreach($binary in @('TunHotspot.exe','TunHotspot.Core.dll','Engine\TunHotspot.Engine.exe','Engine\TunHotspot.Core.dll')){
+    $actual=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $PublishDirectory $binary)).ProductVersion.Split('+')[0]
+    if($actual -ne $version){throw "发布目录版本不一致：$binary 为 $actual，预期 $version。"}
+}
 & $CompilerPath '/Q' "/DAppVersion=$version" "/DPublishDir=$PublishDirectory" "$root\installer\TunHotspot.iss"
 if($LASTEXITCODE){throw '安装包编译失败。'}
 $setup=Join-Path $root "artifacts\installer\TunHotspot-$version-Setup-x64.exe"

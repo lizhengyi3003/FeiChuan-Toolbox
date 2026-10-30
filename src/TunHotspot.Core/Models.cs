@@ -9,6 +9,7 @@ namespace TunHotspot.Core;
 public static class Contract
 {
     public const int Version = 1;
+    public static string ProductVersion => typeof(Contract).Assembly.GetName().Version!.ToString(3);
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     { WriteIndented = false, MaxDepth = 48, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
       RespectNullableAnnotations = true, RespectRequiredConstructorParameters = true };

@@ -25,7 +25,7 @@ internal static class ComponentInstaller
             .Where(x=>!x.EndsWith(".pdb",StringComparison.OrdinalIgnoreCase)&&!x.EndsWith(".db",StringComparison.OrdinalIgnoreCase))
             .Order(StringComparer.OrdinalIgnoreCase).Select(x=>new{Path=x,Relative=Path.GetRelativePath(AppContext.BaseDirectory,x),Hash=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(x)))}).ToList();
         string stamp=Contract.Hash(string.Join("\n",sourceFiles.Select(x=>x.Relative+":"+x.Hash)))[..12];
-        string target = Path.Combine(DataPaths.ComponentRoot, "1.3.0-" + stamp);
+        string target = Path.Combine(DataPaths.ComponentRoot, Contract.ProductVersion + "-" + stamp);
         CheckTarget(target);if(Directory.Exists(target))CheckTree(target);
         bool valid=Directory.Exists(target)&&sourceFiles.All(x=>File.Exists(Path.Combine(target,x.Relative))&&Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(target,x.Relative))))==x.Hash);
         if(valid){SecureDirectory(target,false);foreach(var dir in Directory.EnumerateDirectories(target,"*",SearchOption.AllDirectories))SecureDirectory(dir,false);foreach(var file in Directory.EnumerateFiles(target,"*",SearchOption.AllDirectories))ProtectFile(file);}
@@ -59,7 +59,7 @@ internal static class ComponentInstaller
                 using var sourceDb = new Microsoft.Data.Sqlite.SqliteConnection("Data Source="+Path.Combine(DataPaths.MachineRoot,"toolbox.db")); sourceDb.Open();
                 using var backup = new Microsoft.Data.Sqlite.SqliteConnection("Data Source="+Path.Combine(DataPaths.MachineRoot,"before-update.db")); backup.Open(); sourceDb.BackupDatabase(backup);
             }
-            File.WriteAllText(PolicyPath, Contract.Encode(new ComponentPolicy(Contract.Version, owner, "1.3.0")));
+            File.WriteAllText(PolicyPath, Contract.Encode(new ComponentPolicy(Contract.Version, owner, Contract.ProductVersion)));
             ProtectFile(PolicyPath,true);
             string binary = $"\"{executable}\" --service";
             if (previous is null) { await Sc("create",DataPaths.ServiceName,"binPath=",binary,"start=","auto","DisplayName=","TunHotspot 启动与后台只读监测");createdService=true; }

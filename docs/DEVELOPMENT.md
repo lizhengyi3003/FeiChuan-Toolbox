@@ -1,52 +1,41 @@
 # 开发说明
 
-## 环境与入口
+当前产品为热点与启动工具箱。模块边界见 [ARCHITECTURE.md](ARCHITECTURE.md)，功能范围见 [README](../README.md)，验收入口见 [VALIDATION.md](VALIDATION.md)。历史证据按日期和版本标注。
 
-使用 Visual Studio 打开根目录 `TunHotspot.slnx`，项目文件在 `src/TunHotspot.WinUI/TunHotspot.WinUI.csproj`。平台为 x64，发布采用 Release / win-x64。目标框架为 `net10.0-windows10.0.26100.0`。
+## 构建配置
 
-本次实际构建使用系统 `.NET SDK 11.0.100-rc.3.26522.148`，发布应用使用 .NET 10.0.14 运行库。SDK 的预览版本提示不表示发布应用面向 .NET 11。后续可用稳定 .NET 10 SDK 构建。
+使用 Visual Studio 打开 TunHotspot.slnx。四个项目继承根目录 Directory.Build.props 的产品版本、目标框架、可空检查及隐式 using；平台 Windows x64。不要在 csproj、MCP、服务或安装器另写产品版本。协议、数据库和分类规则版本独立维护。
 
-`build.ps1` 会限定当前进程的 SDK 环境并在完成后恢复，不修改系统环境变量。它关闭 MSBuild workload resolver 以适配当前本机 SDK 组件安装状态。`-Offline` 仅使用 `.tools/winui-build-tools/feed`；在线构建使用该缓存和 nuget.org。
+目标框架 net10.0-windows10.0.26100.0，UI 最低声明 Windows 11 22000；干净系统实测为 26100，不代表全部构建与硬件已验收。构建需要 .NET 10 或更高 SDK、Windows SDK 26100、WinUI 工具和 NuGet 依赖。本机使用 SDK 11 RC，自包含应用使用 .NET 10，实际依赖以 runtimeconfig、deps 和 Notices/dependencies.json 为准。
 
-## 代码职责
-
-| 文件 | 职责 |
-| --- | --- |
-| `App.xaml.cs` | WinUI 初始化、AppInstance 单实例、激活窗口、安装器运行检测 mutex |
-| `MainWindow.xaml` | 原生中文 UI、状态卡片、开关按钮、错误提示 |
-| `MainWindow.xaml.cs` | 3 秒只读刷新、用户操作协调、窗口 ICO、关闭时保持网络状态 |
-| `HotspotService.cs` | 匹配 Kumiryo 网卡与 ConnectionProfile，调用热点 API |
-| `AppLog.cs` | 本地操作元数据和当前状态记录 |
-| `Assets/` | 原创图标及 SVG 源文件 |
-
-## 网络行为
-
-按名称 `Kumiryo` 查找状态为 Up 的网卡，再按 GUID 匹配 Windows ConnectionProfile。优先使用 InternetAccess 的配置，调用 `NetworkOperatorTetheringManager.CreateFromConnectionProfile` 创建管理器。网卡 GUID 发生变化时重建管理器。
-
-`StartTetheringAsync` 和 `StopTetheringAsync` 仅通过用户按钮触发。启动、窗口关闭、定时器和安装器均不调用网络开关。没有后台服务、计划任务或自启项。窗口关闭只停止 UI 定时器；热点由 Windows 保持。
-
-启动中仍保留停止按钮，停止操作会取消待完成的启动请求并调用 Windows 停止接口。操作版本号防止旧请求完成后覆盖较新的 UI。状态读取异常会保留恢复入口。没有自动重试开关网络的逻辑。
-
-## 发布与资源
-
-采用 unpackaged/self-contained 目录发布，包含 .NET、WinUI 及传递依赖。`EnableMsixTooling=true` 用于生成发布所需的 `TunHotspot.pri`；移除此项可能导致启动时 XAML 解析失败。
-
-不要把项目的 `.tools`、`bin`、`obj`、诊断日志或网络订阅备份加入软件安装包。安装包仅收录 `artifacts/win-x64` 的运行文件和用户说明，排除 PDB。
-
-图标源文件为 `Assets/TunHotspot.svg`；`tools/Generate-Icon.ps1` 使用同一几何参数在 Windows GDI+ 中重绘并生成 16、20、24、32、40、48、64、128、256 像素的 ICO 层。修改 SVG 外观时需同步生成脚本参数。
-
-## 安装包
-
-`tools/Initialize-InstallerTools.ps1` 从官方 GitHub 发布下载 Inno Setup 7.1.0，要求 Authenticode 签名有效且发布者为 Pyrsys B.V.。以便携模式解包到 `.tools`，不注册开发工具或文件关联。
-
-`installer/TunHotspot.iss` 使用当前用户安装，不要求管理员权限。版本来自 csproj。更新和卸载通过 `TunHotspot.WinUI.Running` mutex 检测助手是否运行，只提示手动关闭；不使用 Restart Manager 自动终止应用。卸载保留 `%LOCALAPPDATA%/TunHotspot.WinUI` 中的操作记录。
-
-构建安装包：
+build.ps1 只为当前进程配置 SDK 环境并恢复，关闭本机预览 SDK 的 workload resolver，不改系统环境。-Offline 使用预先准备的本地 feed。
 
 ```powershell
-.\tools\Build-Installer.ps1 -Publish -Offline
+.\build.ps1
+.\build.ps1 -Publish # 默认 artifacts/toolbox-preview
+$env:MSBuildEnableWorkloadResolver='false'
+dotnet run --project src\TunHotspot.Tests -c Release
 ```
 
-`tools/Test-Installer.ps1` 可在助手已关闭、电脑尚未安装正式版本时执行安装/卸载往返验证。它拒绝覆盖已安装版本；临时文件和结果保存在 `artifacts/qa`，不启动软件或开关网络。
+## 正式分发
 
-官方参考：[热点 API](https://learn.microsoft.com/en-us/uwp/api/windows.networking.networkoperators.networkoperatortetheringmanager)、[WinUI 无打包部署](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/unpackage-winui-app)、[Inno 便携实现](https://github.com/jrsoftware/issrc/blob/main/isportable.iss)、[安装器应用关闭策略](https://jrsoftware.org/ishelp/topic_setup_closeapplications.htm)。
+```powershell
+.\tools\Build-Release.ps1
+# 离线依赖齐全时可加 -Offline；默认使用新空目录。
+# 指定 -OutputDirectory 时目录也必须为空。
+```
+
+从同一发布目录生成安装包和便携 ZIP，核对产品版本、使用说明、更新记录、全文件 SHA-256 和私有文件排除规则。输出在 artifacts/installer、artifacts/distribution，生成各包 SHA-256 及 release-版本.json。包内 release.json 记录版本、提交、框架、架构和构建时间；files.sha256 校验除自身外的发布文件。正式交付前先提交本次源码与说明；提交号本身不能证明工作区没有后续改动。
+
+Prepare-Distribution.ps1 收集 .NET/WinUI 依赖许可证、Microsoft 签名有效的 app-local VC++ 运行文件、使用说明和更新记录，排除 PDB。不得打包 .tools、源码、数据库、分析 JSON、审计和本机日志。发布为 unpackaged/self-contained；EnableMsixTooling 用于生成 PRI，不能未经运行验证移除。
+
+安装器使用 Inno Setup 7，tools/Initialize-InstallerTools.ps1 校验官方签名后准备便携编译器。单独重建安装器用 tools/Build-Installer.ps1 -PublishDirectory <完整发布目录>，拒绝 UI、Engine、Core 版本不同的目录。安装脚本不另提供产品版本默认值。
+
+安装为当前用户，默认不请求管理员。更新和卸载要求退出托盘，通过 mutex 检测，不强制终止应用。若有机器组件，卸载另行 UAC 移除自身组件，保留历史。系统控制和安装测试优先在断网 Windows Sandbox 内运行。
+
+## 维护约定
+
+- HotspotPage.xaml/.cs 与 HotspotPage 类名对应；工具箱主窗口是 ToolboxWindow。热点仅在用户点击按钮时开关。
+- 源码在 src，构建/隔离测试在 tools，安装定义在 installer，说明在 docs。生成文件、历史发布、本机证据在被 Git 忽略的 artifacts；保留用户提供的 docs/images。
+- 改动扫描、模型、指纹、存储和权限时跑功能检查；改分发时核对完整文件并做干净系统运行。仅文档变化无需重复全部控制测试。
+- 不把旧快照、取消授权、部分成功或界面截图写成完整管理员扫描、真实重启轨迹或原生材质验收。

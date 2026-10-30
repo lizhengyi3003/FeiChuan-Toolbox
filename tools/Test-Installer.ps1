@@ -1,11 +1,14 @@
-﻿param([string]$SetupPath)
+﻿param([string]$SetupPath,[Parameter(Mandatory=$true)][string]$PublishDirectory)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
-if(-not $SetupPath){$SetupPath=(Get-ChildItem "$root\artifacts\installer\*-Setup-x64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName}
-if(-not $SetupPath){throw '请先生成安装包。'}
+[xml]$properties=Get-Content -LiteralPath (Join-Path $root 'Directory.Build.props')
+if(-not $SetupPath){$SetupPath=Join-Path $root ("artifacts\installer\TunHotspot-"+[string]$properties.Project.PropertyGroup.Version+'-Setup-x64.exe')}
+if(-not(Test-Path -LiteralPath $SetupPath)){throw '请先生成安装包。'}
+$published=[IO.Path]::GetFullPath($PublishDirectory)
+if(-not(Test-Path -LiteralPath (Join-Path $published 'files.sha256'))){throw '必须指定本次安装包对应的完整发布目录。'}
 $registryPath='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{8EE42691-81B4-4A6F-A115-9961835E1D45}_is1'
 if(Test-Path -LiteralPath $registryPath){throw '已安装正式版本，跳过测试以免覆盖现有安装。'}
-if(Get-Process TunHotspot -ErrorAction SilentlyContinue){throw '请先手动关闭热点助手窗口，热点状态会保留。'}
+if(Get-Process TunHotspot -ErrorAction SilentlyContinue){throw '请先从托盘退出工具箱，热点状态会保留。'}
 $testId='installer-'+[DateTime]::Now.ToString('yyyyMMdd-HHmmss')
 $testRoot=Join-Path $root "artifacts\qa\$testId"
 $installDirectory=Join-Path $testRoot 'installed'
@@ -20,7 +23,6 @@ try {
     $process=Start-Process -FilePath $SetupPath -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
     $installExit=$process.ExitCode
     if($installExit -ne 0){throw "测试安装失败：$installExit"}
-    $published=Join-Path $root 'artifacts\win-x64'
     foreach($file in Get-ChildItem -LiteralPath $published -File -Recurse | Where-Object Extension -ne '.pdb'){
         $relative=[IO.Path]::GetRelativePath($published,$file.FullName)
         $installed=Join-Path $installDirectory $relative
