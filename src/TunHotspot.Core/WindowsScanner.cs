@@ -402,8 +402,15 @@ public sealed class WindowsScanner
                 using var @class = package?.OpenSubKey("Class\\" + clsid); var serverId = Value(@class, "ServerId");
                 if (serverId.Length == 0) continue;
                 using var server = package?.OpenSubKey("Server\\" + serverId); var executable = Value(server, "Executable");
+                if(string.IsNullOrWhiteSpace(executable))continue;
                 if (Path.IsPathRooted(executable)) return executable;
-                var location = Value(package, "PackageRootFolder"); if (location.Length > 0) return Path.Combine(location, executable);
+                var location = Value(package, "PackageRootFolder");
+                if(location.Length==0)
+                {
+                    using var repository=machine.OpenSubKey(@"SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\PackageRepository\Packages\"+packageName);
+                    location=Value(repository,"Path");
+                }
+                if(Path.IsPathFullyQualified(location))return Path.Combine(location,executable);
             }
         }
         return "";
