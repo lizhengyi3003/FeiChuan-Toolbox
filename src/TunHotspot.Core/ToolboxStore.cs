@@ -72,7 +72,20 @@ public sealed class ToolboxStore
         return raw is null ? default : Contract.Decode<T>(raw);
     }
     public void Set<T>(string key, T value) => Execute("INSERT INTO metadata VALUES($key,$value) ON CONFLICT(key) DO UPDATE SET value=excluded.value", ("$key", key), ("$value", Contract.Encode(value)));
-    public ScanSnapshot? Latest { get { var snapshot=Get<ScanSnapshot>("latest");if(snapshot is not null)AttachNotes(snapshot);return snapshot; } }
+    public ScanSnapshot? Latest { get { var snapshot=Get<ScanSnapshot>("latest");if(snapshot is not null){AttachNotes(snapshot);AttachOrigins(snapshot);}return snapshot; } }
+    public void AttachOrigins(ScanSnapshot snapshot)
+    {
+        var marks=Query("SELECT value FROM metadata WHERE key LIKE 'origin:%'").Select(Contract.Decode<CreationOriginMark>).ToLookup(x=>x.EntryId);
+        foreach(var entry in snapshot.Entries)entry.CreationMarks=marks[entry.Id].ToList();
+    }
+    public void SaveOrigin(StartupEntry entry,string agent,string state,string evidence)
+    {
+        if(!CreationOrigins.Agents.Contains(agent)||state is not ("用户确认" or "已排除" or "清除标记")||evidence.Length>2000||entry.Id.Length!=64)throw new InvalidDataException("来源标记无效。");
+        string key="origin:"+entry.Id+":"+agent;
+        if(state=="清除标记")Execute("DELETE FROM metadata WHERE key=$key",("$key",key));
+        else{if(string.IsNullOrWhiteSpace(evidence))throw new InvalidDataException("请填写确认或排除的依据。");Set(key,new CreationOriginMark(entry.Id,agent,state,evidence,CreationOrigins.TargetKey(entry),DateTimeOffset.UtcNow));}
+        AddEvents([new(){Kind="来源标记",Name=entry.Name,Source=agent,Detail=state+"；"+evidence}]);
+    }
     private void AttachNotes(ScanSnapshot snapshot)
     {
         var notes=Query("SELECT value FROM metadata WHERE key LIKE 'note:%'").Select(Contract.Decode<PersonalNote>).ToDictionary(x=>x.EntryId,x=>x.Text);
@@ -106,8 +119,8 @@ public sealed class ToolboxStore
         var ignored=Query("SELECT json_object('entryId',id,'text',fingerprint) FROM pending_ignore").Select(Contract.Decode<PersonalNote>).ToDictionary(x=>x.EntryId,x=>x.Text);
         foreach(var e in snapshot.Entries)
         {
-            bool valid=decisions.TryGetValue(e.Id,out var decision)&&decision.Fingerprint==e.Fingerprint;
-            if((valid?decision!.Advice:e.Advice)=="待分析"&&(!ignored.TryGetValue(e.Id,out string? fingerprint)||fingerprint!=e.Fingerprint)&&pending.Add(e.Id)){Enqueue(e.Id);added++;}
+            bool valid=decisions.TryGetValue(e.Id,out var decision)&&e.MatchesFingerprint(decision.Fingerprint);
+            if((valid?decision!.Advice:e.Advice)=="待分析"&&(!ignored.TryGetValue(e.Id,out string? fingerprint)||!e.MatchesFingerprint(fingerprint))&&pending.Add(e.Id)){Enqueue(e.Id);added++;}
         }
         return added;
     }
@@ -132,6 +145,7 @@ public sealed class ToolboxStore
         if (snapshot.Protocol != Contract.Version || snapshot.DeviceId != Contract.DeviceId) throw new InvalidDataException("快照不属于本机或协议不兼容。");
         if(snapshot.Cancelled){Set("lastCancelledScan",new{snapshot.Id,snapshot.Started,snapshot.Finished,snapshot.Privilege});AddEvents([new(){Kind="扫描取消",Name="配置采集",Detail="未将部分结果发布为新的当前基线。"}]);return;}
         AttachNotes(snapshot);
+        AttachOrigins(snapshot);
         var previous = Latest;
         if (previous is not null)
         {
@@ -229,8 +243,9 @@ public sealed class ToolboxStore
         var snapshot = Latest ?? throw new InvalidOperationException("请先完成扫描。");
         ReconcilePending(snapshot);
         var selected = Pending.ToHashSet(); var batch = new AnalysisBatch { SnapshotId = snapshot.Id };
-        batch.Items = snapshot.Entries.Where(x => selected.Contains(x.Id)).Take(100).Select(x => new AnalysisItem(x.Id, x.Fingerprint, Redact(x))).ToList();
-        if (batch.Items.Count == 0) throw new InvalidOperationException("没有可分析条目。请将条目加入待分析区。");
+        var reviewed=Decisions.ToDictionary(x=>x.EntryId);
+        batch.Items = snapshot.Entries.Where(x => selected.Contains(x.Id)&&x.ObservationStatus=="本次读取").OrderBy(x=>reviewed.TryGetValue(x.Id,out var d)&&x.MatchesFingerprint(d.Fingerprint)?1:0).Take(100).Select(x => new AnalysisItem(x.Id, x.Fingerprint, Redact(x))).ToList();
+        if (batch.Items.Count == 0) throw new InvalidOperationException("没有已重新确认的待分析条目；历史保留项目需要先重新扫描确认。");
         Execute("INSERT INTO batches VALUES($id,$data)", ("$id", batch.Id), ("$data", Contract.Encode(batch)));
         return batch;
     }
@@ -248,7 +263,7 @@ public sealed class ToolboxStore
         var advice = new[] { "建议保留", "按需保留", "可考虑取消", "需修复", "待分析" };
         foreach (var d in result.Decisions)
         {
-            if (!batch.Items.Any(x => x.EntryId == d.EntryId && x.Fingerprint == d.Fingerprint) || !current.TryGetValue(d.EntryId, out var entry) || entry.Fingerprint != d.Fingerprint || entry.ObservationStatus != "本次读取")
+            if (!batch.Items.Any(x => x.EntryId == d.EntryId && x.Fingerprint == d.Fingerprint) || !current.TryGetValue(d.EntryId, out var entry) || !entry.MatchesFingerprint(d.Fingerprint) || entry.ObservationStatus != "本次读取")
                 throw new InvalidDataException("分析已过期或条目不匹配，请重新分析。");
             if (!advice.Contains(d.Advice) || d.Reason.Length is < 1 or > 4000 || d.Impact.Length > 4000 || !new[] { "高", "中", "低" }.Contains(d.Confidence)) throw new InvalidDataException("建议字段不符合协议。");
         }

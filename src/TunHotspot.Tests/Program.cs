@@ -51,6 +51,28 @@ try
  service.Name="ThirdPartyFixture";Rejected(()=>ControlPolicy.Validate(service,Contract.Sid,"serviceMode","disabled & arbitrary"),"拒绝未枚举的服务修改值");
  service.Mode="自动";service.Configuration["delayedAutoStart"]="1";Check(service.ControlValue=="自动（延迟）","关注状态区分普通自动与延迟自动");
  service.Configuration["type"]="96";try{ControlPolicy.Validate(service,Contract.Sid,"serviceMode","disabled");throw new Exception("错误允许用户服务模板修改");}catch(InvalidOperationException){Check(true,"拒绝直接修改用户服务模板");}
+ var originEntry=Entry();originEntry.Name="Codex background task";originEntry.Executable=@"C:\Tools\Codex\helper.exe";
+ Check(CreationOrigins.Get(originEntry,"Codex").Related&&!CreationOrigins.Get(originEntry,"Codex").Confirmed,"关联名称只能形成线索，不能证明创建者");
+ Check(EntryQueries.Groups([],"创建来源").Count()==2,"没有匹配项时也显示两个固定来源分组");
+ string originFingerprint=originEntry.Fingerprint;store.SaveOrigin(originEntry,"Codex","用户确认","用户明确确认测试来源");var originSnapshot=Snapshot(originEntry);store.AttachOrigins(originSnapshot);
+ Check(CreationOrigins.Get(originEntry,"Codex").Confirmed&&originFingerprint==originEntry.Fingerprint,"人工来源标记独立保存且不改变分析指纹");
+ var originFilter=new EntryFilter{Creator="Codex",OriginState="用户确认"};Check(originFilter.Apply([originEntry]).Count==1,"来源筛选区分已确认与名称线索");
+ originEntry.Command="replacement.exe";Check(!CreationOrigins.Get(originEntry,"Codex").Confirmed,"目标替换后人工来源确认失效");originEntry.Command=Entry().Command;
+ store.SaveOrigin(originEntry,"Codex","已排除","用户确认属于软件自身启动而非创建记录");store.AttachOrigins(originSnapshot);Check(!CreationOrigins.Get(originEntry,"Codex").Related,"明确排除覆盖名称关联线索");
+ store.SaveOrigin(originEntry,"Codex","清除标记","");store.AttachOrigins(originSnapshot);Check(CreationOrigins.Get(originEntry,"Codex").State=="线索待确认","清除人工标记后重新显示原始线索");
+ Check(CommandInspector.ResolveExecutable(CommandInspector.TaskCommand("\"C:\\Program Files\\Fixture\\tool.exe\"","--flag"))==@"C:\Program Files\Fixture\tool.exe","任务原有引号不重复包装，目标文件仍可解析");
+ Check(CommandInspector.ResolveExecutable("%ProgramData%\\Fixture\\agent.exe")==Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),@"Fixture\agent.exe"),"正确展开机器 ProgramData，不依赖当前用户目录");
+ var firstAudit=Snapshot(Entry());var sameConfig=Entry();sameConfig.State="Running";Check(AuditComparison.Between(firstAudit,Snapshot(sameConfig)).Changed.Count==0,"运行状态变化不冒充启动配置变化");
+ Check(AuditComparison.Between(firstAudit,Snapshot(Entry(false))).Changed.Count==1,"管理员复核识别真实启用配置变化");
+ Check(CommandInspector.ResolveShellModule(@"%windir%\System32\webcheck.dll",true)==Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.SystemX86),"webcheck.dll"),"32 位 Shell 模块按对应架构核对文件");
+ Check(CommandInspector.ResolveExecutable(@"%CommonProgramFiles%\System\wab32.dll")==Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFiles),@"System\wab32.dll"),"解析 CommonProgramFiles 目标以减少未知项误报");
+ var historyOnly=Entry();historyOnly.Id=new string('c',64);historyOnly.ObservationStatus="保留上次结果，本次未确认";store.Set("latest",Snapshot(historyOnly));store.Enqueue(historyOnly.Id);
+ try{store.CreateBatch();throw new Exception("错误允许历史保留项提交新分析");}catch(InvalidOperationException){Check(true,"历史保留项不会进入无法提交的分析批次");}
+ var mixed=Entry();mixed.Configuration=new(StringComparer.Ordinal){{"command",""},{"CreatorSID","test"}};var roundTrip=Contract.Decode<StartupEntry>(Contract.Encode(mixed));
+ Check(mixed.Fingerprint==roundTrip.Fingerprint,"混合大小写配置的指纹在序列化往返后稳定");
+ Check(Snapshot(mixed).ConfigurationHash==Snapshot(roundTrip).ConfigurationHash,"配置历史哈希不受字典反序列化排序影响");
+ Check(mixed.MatchesFingerprint(mixed.LegacyFingerprint),"旧版 MCP 的等价完整数据指纹可兼容");var legacy=mixed.LegacyFingerprint;mixed.Configuration["CreatorSID"]="changed";
+ Check(!mixed.MatchesFingerprint(legacy),"旧格式兼容仍拒绝配置实际变化");
  var corruptHive=Path.Combine(root,"corrupt-hive.dat");File.WriteAllBytes(corruptHive,new byte[32]);Rejected(()=>OfflineHive.ReadStartup(corruptHive),"私有 hive 副本创建后拒绝损坏格式并清理");
  Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();foreach(var f in Directory.EnumerateFiles(schemaRoot))File.Delete(f);Directory.Delete(schemaRoot);
  Console.WriteLine($"通过 {passed} 项功能检查；数据目录 {root}");

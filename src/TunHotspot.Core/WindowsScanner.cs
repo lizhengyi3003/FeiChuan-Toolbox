@@ -273,7 +273,7 @@ public sealed class WindowsScanner
                 var e = Add(running.ContainsKey(name) ? driver ? "驱动" : "服务" : "服务/驱动补充登记", name, @"HKLM\SYSTEM\CurrentControlSet\Services\" + name, Value(key, "ImagePath"));
                 e.Mode = mode; e.Configuration["start"] = Text(start); e.Configuration["type"] = type.ToString(); e.UserInstance = (type & 0x80) != 0;
                 if (running.TryGetValue(name, out var runtime)) { e.State = runtime.State; e.ProcessId = runtime.Pid; e.Evidence["描述"] = runtime.Description; }
-                else e.State = "未包含在 CIM 运行列表；登记不等于已加载";
+                else e.State = "未包含在本次运行列表；登记不等于已加载";
                 using var parameters = key.OpenSubKey("Parameters"); var dll = Value(parameters, "ServiceDll");
                 e.Payload = dll; e.Configuration["serviceDll"] = dll;
                 e.Evidence["显示名称"] = Value(key, "DisplayName"); e.Evidence["执行账户"] = Value(key, "ObjectName");
@@ -339,7 +339,7 @@ public sealed class WindowsScanner
                         XNamespace ns = "http://schemas.microsoft.com/windows/2004/02/mit/task";
                         var root = xml.Root!; var actions = root.Element(ns + "Actions");
                         var execute = actions?.Element(ns + "Exec"); var com = actions?.Element(ns + "ComHandler");
-                        var command = execute is null ? "" : $"\"{execute.Element(ns + "Command")?.Value}\" {execute.Element(ns + "Arguments")?.Value}";
+                        var command = execute is null ? "" : CommandInspector.TaskCommand(execute.Element(ns + "Command")?.Value??"",execute.Element(ns + "Arguments")?.Value??"");
                         var e = Add("计划任务", (string)task.Name, path, command); e.Enabled = (bool)task.Enabled;
                         e.State = ((int)task.State) switch { 1 => "禁用", 2 => "排队", 3 => "就绪", 4 => "运行中", _ => "未知" };
                         e.Configuration["enabled"] = e.Enabled.ToString()!;
@@ -350,6 +350,8 @@ public sealed class WindowsScanner
                         e.Evidence["执行账户"] = principal?.Element(ns + "UserId")?.Value ?? principal?.Element(ns + "GroupId")?.Value ?? "";
                         e.Evidence["工作目录"] = execute?.Element(ns + "WorkingDirectory")?.Value ?? "";
                         e.Evidence["任务 XML"] = xmlText;
+                        e.Evidence["作者"]=root.Element(ns+"RegistrationInfo")?.Element(ns+"Author")?.Value??"";
+                        e.Evidence["描述"]=root.Element(ns+"RegistrationInfo")?.Element(ns+"Description")?.Value??"";
                         var enabledTriggers = root.Element(ns + "Triggers")?.Elements().Where(x => x.Element(ns + "Enabled")?.Value != "false").ToList() ?? [];
                         e.Mode = enabledTriggers.Count == 0 ? "无启用触发器；可能被外部调用" : string.Join("、", enabledTriggers.Select(x => x.Name.LocalName).Distinct());
                         e.Evidence["最近执行结果"] = "0x" + unchecked((uint)(int)task.LastTaskResult).ToString("X8");
@@ -380,10 +382,10 @@ public sealed class WindowsScanner
         }
         finally { Marshal.FinalReleaseComObject(folders); }
     }
-    private static string ResolveClsid(string clsid, string sid)
+    private static string ResolveClsid(string clsid, string sid,RegistryView? onlyView=null)
     {
         if (!Guid.TryParse(clsid, out _)) return "";
-        foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+        foreach (var view in onlyView.HasValue?new[]{onlyView.Value}:new[] { RegistryView.Registry64, RegistryView.Registry32 })
         {
             using var machine = Machine(view); using var users = Users(view); using var user = users.OpenSubKey(sid + @"\Software\Classes");
             foreach (var root in new[] { user, machine.OpenSubKey(@"SOFTWARE\Classes") })
@@ -477,7 +479,7 @@ public sealed class WindowsScanner
             using var key = machine.OpenSubKey(approved);
             if (key is not null) foreach (var name in key.GetValueNames())
             {
-                Check(); var e = Add("Explorer 扩展", Value(key, name), "HKLM\\" + approved + "\\" + name, ResolveClsid(name, _owner), view: view.ToString());
+                Check(); var e = Add("Explorer 扩展", Value(key, name), "HKLM\\" + approved + "\\" + name, ResolveClsid(name, _owner,view), view: view.ToString());
                 e.Mode = "Explorer 宿主加载；不代表开机常驻"; e.Evidence["CLSID"] = name;
             }
         }
@@ -495,7 +497,7 @@ public sealed class WindowsScanner
     }
     private void ReadWmi()
     {
-        foreach (var className in new[] { "__EventFilter", "CommandLineEventConsumer", "ActiveScriptEventConsumer", "__FilterToConsumerBinding" })
+        foreach (var className in new[] { "__EventFilter", "CommandLineEventConsumer", "ActiveScriptEventConsumer", "NTEventLogEventConsumer", "LogFileEventConsumer", "__FilterToConsumerBinding" })
         {
             Check();
             try
@@ -551,6 +553,7 @@ public sealed class WindowsScanner
         {
             Check();
             e.Executable = CommandInspector.ResolveExecutable(e.Command, _users.FirstOrDefault(x => x.Sid == e.OwnerSid).Path, e.Evidence.GetValueOrDefault("工作目录", ""));
+            if(e.Category=="Explorer 扩展")e.Executable=CommandInspector.ResolveShellModule(e.Command,e.View=="Registry32");
             if (!string.IsNullOrEmpty(e.Executable))
             {
                 if (!files.TryGetValue(e.Executable, out var fact))
@@ -561,6 +564,16 @@ public sealed class WindowsScanner
                 if (e.App == "未确认所属应用") e.App = Path.GetFileNameWithoutExtension(e.Executable);
             }
             else if (e.Health == "待检查") e.Health = "目标未解析或非文件登记";
+            if(e.Category=="LSA 扩展")
+            {
+                foreach(string module in e.Command.Split(['|',','],StringSplitOptions.RemoveEmptyEntries).Select(x=>x.Trim().Trim('"')).Where(x=>System.Text.RegularExpressions.Regex.IsMatch(x,@"^[A-Za-z0-9_.-]+$")))
+                {
+                    string path=Path.Combine(Environment.SystemDirectory,module.EndsWith(".dll",StringComparison.OrdinalIgnoreCase)?module:module+".dll");
+                    var fact=CommandInspector.Inspect(path,null);
+                    e.Evidence["认证载荷 "+module]=$"{path} · {fact.Health} · {fact.Company} · {fact.Signature}";
+                    e.Configuration["module:"+module]=fact.Identity;
+                }
+            }
             if (e.Payload.Length > 0)
             {
                 string payload = CommandInspector.ResolveExecutable(e.Payload, null, "");

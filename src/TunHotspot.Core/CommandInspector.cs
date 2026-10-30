@@ -9,6 +9,12 @@ public sealed record FileFact(string Health, string Identity, string Company, st
 
 public static class CommandInspector
 {
+    public static string TaskCommand(string command,string arguments)
+    {
+        string path=command.Trim();
+        if(path.Length==0)return "";
+        return (path.StartsWith('"')&&path.EndsWith('"')?path:"\""+path+"\"")+" "+arguments;
+    }
     public static string ResolveExecutable(string command, string? profile = null, string workingDirectory = "")
     {
         var text = command.Trim(); if (text.Length == 0 || text.Length > 32768) return "";
@@ -22,6 +28,10 @@ public static class CommandInspector
         text = Regex.Replace(text, "%SYSTEMROOT%|%WINDIR%", _ => windows, RegexOptions.IgnoreCase);
         text = Regex.Replace(text, @"%PROGRAMFILES\(X86\)%", _ => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), RegexOptions.IgnoreCase);
         text = Regex.Replace(text, "%PROGRAMFILES%", _ => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "%PROGRAMDATA%|%ALLUSERSPROFILE%", _ => Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "%SYSTEMDRIVE%", _ => Path.GetPathRoot(windows)!.TrimEnd('\\'), RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"%COMMONPROGRAMFILES\(X86\)%", _ => Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFilesX86), RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "%COMMONPROGRAMFILES%", _ => Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFiles), RegexOptions.IgnoreCase);
         if (text.StartsWith(@"\??\")) text = text[4..];
         if (text.StartsWith(@"\SystemRoot\", StringComparison.OrdinalIgnoreCase)) text = windows + text[11..];
         var match = Regex.Match(text, "^\"([^\"]+)\"|^(.+?\\.(?:exe|dll|sys|com|bat|cmd|ps1|vbs|js))(?=\\s|,|$)", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
@@ -37,6 +47,18 @@ public static class CommandInspector
             else return "";
         }
         try { return Path.GetFullPath(path); } catch { return ""; }
+    }
+    public static string ResolveShellModule(string command,bool x86)
+    {
+        if(x86&&Environment.Is64BitOperatingSystem)
+        {
+            command=Regex.Replace(command,"%COMMONPROGRAMFILES%",_=>Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFilesX86),RegexOptions.IgnoreCase);
+            command=Regex.Replace(command,"%PROGRAMFILES%",_=>Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),RegexOptions.IgnoreCase);
+        }
+        string path=ResolveExecutable(command);
+        if(x86&&Environment.Is64BitOperatingSystem&&path.StartsWith(Environment.SystemDirectory+"\\",StringComparison.OrdinalIgnoreCase))
+            path=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.SystemX86),path[(Environment.SystemDirectory.Length+1)..]);
+        return path;
     }
     public static FileFact Inspect(string path, StartupEntry? cached, bool signature = true)
     {

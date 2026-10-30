@@ -58,10 +58,15 @@ public sealed class StartupEntry
     public string ObservationStatus { get; set; } = "本次读取";
     public string UserNote { get; set; } = "";
     [JsonIgnore] public AnalysisDecision? Analysis { get; set; }
+    [JsonIgnore] public List<CreationOriginMark> CreationMarks {get;set;}=[];
     [JsonIgnore] public string EffectiveAdvice => Analysis?.Advice ?? Advice;
     public SortedDictionary<string, string> Configuration { get; set; } = new(StringComparer.Ordinal);
     public SortedDictionary<string, string> Evidence { get; set; } = new(StringComparer.Ordinal);
-    [JsonIgnore] public string Fingerprint => Contract.Hash(Contract.Encode(Configuration) + "|" + FileIdentity + "|" + UserNote);
+    [JsonIgnore] public string Fingerprint => FingerprintWith(StringComparer.Ordinal);
+    // Older MCP clients used culture-sorted dictionaries. Accept an equivalent full-data digest during migration.
+    [JsonIgnore] public string LegacyFingerprint => FingerprintWith(StringComparer.InvariantCulture);
+    public bool MatchesFingerprint(string fingerprint)=>fingerprint==Fingerprint||fingerprint==LegacyFingerprint;
+    private string FingerprintWith(IComparer<string> order)=>Contract.Hash(Contract.Encode(new SortedDictionary<string,string>(Configuration,order))+"|"+FileIdentity+"|"+UserNote);
     [JsonIgnore] public string ControlValue => Enabled.HasValue ? (Enabled.Value ? "启用" : "禁用")
         : Mode=="自动"&&Configuration.GetValueOrDefault("delayedAutoStart")=="1"?"自动（延迟）" : Mode is "自动" or "手动" or "禁用" or "引导" or "系统" ? Mode : "状态未确认";
     [JsonIgnore] public string StateText => $"{ControlValue} · {State}".Trim(' ', '·');
@@ -114,7 +119,7 @@ public sealed class ScanSnapshot
     public List<ProcessRecord> Processes { get; set; } = [];
     public string BootObservation { get; set; } = "采集开始前的启动不保证完整；本次为配置与当前进程快照。";
     [JsonIgnore] public bool Complete => !Cancelled && Coverage.Count > 0 && Coverage.All(x => x.Status is "成功" or "不适用");
-    [JsonIgnore] public string ConfigurationHash => Contract.Hash(string.Join("\n", Entries.OrderBy(x => x.Id).Select(x => x.Id + Contract.Encode(x.Configuration) + x.FileIdentity)));
+    [JsonIgnore] public string ConfigurationHash => Contract.Hash(string.Join("\n", Entries.OrderBy(x => x.Id).Select(x => x.Id + Contract.Encode(new SortedDictionary<string,string>(x.Configuration,StringComparer.Ordinal)) + x.FileIdentity)));
 }
 
 public sealed record ScanProgress(string Stage, int CompletedStages, int TotalStages, int Discovered, string Message);
