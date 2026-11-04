@@ -50,6 +50,11 @@ $sbom | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath (Join-Path $packages
 $base = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox/releases/download/v' + $version + '/'
 $installerUrl = $base + [Uri]::EscapeDataString([IO.Path]::GetFileName($release.installer.file))
 $zipUrl = $base + [Uri]::EscapeDataString([IO.Path]::GetFileName($release.portable.file))
+$definition = Get-Content -LiteralPath (Join-Path $root 'installer\TunHotspot.iss') -Raw
+$publisher = [regex]::Match($definition, '(?m)^AppPublisher=(.+)').Groups[1].Value.Trim()
+$applicationId = [regex]::Match($definition, '(?m)^AppId=\{\{([A-F0-9-]{36})\}').Groups[1].Value
+if (-not $publisher -or -not $applicationId) { throw 'Cannot determine installer publisher and uninstall identity.' }
+$productCode = '{' + $applicationId + '}_is1'
 $scoop = [ordered]@{ version = $version; description = 'Windows 11 WinUI 3 toolbox for startup management, hotspot and Kumiryo configuration'; homepage = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox'; license = 'GPL-3.0-only'
     architecture = @{ '64bit' = @{ url = $zipUrl; hash = $release.portable.sha256 } }; shortcuts = (, @('TunHotspot.exe', '飞船的小工具箱')); checkver = @{ github = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox' }
     autoupdate = @{ architecture = @{ '64bit' = @{ url = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox/releases/download/v$version/飞船的小工具箱-$version-win11-x64.zip' } } } }
@@ -59,7 +64,8 @@ $winget = @"
 PackageIdentifier: lizhengyi3003.FeiChuanToolbox
 PackageVersion: $version
 PackageLocale: zh-CN
-Publisher: lizhengyi3003
+Publisher: $publisher
+PublisherUrl: https://github.com/lizhengyi3003
 PackageName: 飞船的小工具箱
 License: GPL-3.0-only
 LicenseUrl: https://github.com/lizhengyi3003/FeiChuan-Toolbox/blob/v$version/LICENSE
@@ -67,6 +73,7 @@ ShortDescription: Windows 11 启动管理、兼容热点与 Kumiryo 配置工具
 PackageUrl: https://github.com/lizhengyi3003/FeiChuan-Toolbox
 InstallerType: inno
 Scope: user
+ProductCode: '$productCode'
 InstallerSwitches:
   Custom: /CLOSEOWNAPPS=1
 MinimumOSVersion: 10.0.22000.0

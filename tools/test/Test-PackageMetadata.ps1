@@ -25,5 +25,10 @@ $base = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox/releases/download/v' 
 if ($scoop.version -ne $release.version -or $scoop.architecture.'64bit'.hash -ne $release.portable.sha256 -or $scoop.architecture.'64bit'.url -ne ($base + [Uri]::EscapeDataString($zip))) { throw 'Scoop package identity/hash mismatch.' }
 if ($scoop.shortcuts.Count -ne 1 -or $scoop.shortcuts[0] -isnot [array] -or $scoop.shortcuts[0].Count -ne 2 -or $scoop.shortcuts[0][0] -ne 'TunHotspot.exe') { throw 'Invalid Scoop shortcut declaration.' }
 $winget = Get-Content -LiteralPath (Join-Path $packages 'lizhengyi3003.FeiChuanToolbox.yaml') -Raw
+$root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+$definition = Get-Content -LiteralPath (Join-Path $root 'installer\TunHotspot.iss') -Raw
+$publisher = [regex]::Match($definition, '(?m)^AppPublisher=(.+)').Groups[1].Value.Trim()
+$applicationId = [regex]::Match($definition, '(?m)^AppId=\{\{([A-F0-9-]{36})\}').Groups[1].Value
+if (-not $publisher -or -not $applicationId -or -not $winget.Contains('Publisher: ' + $publisher) -or -not $winget.Contains("ProductCode: '{" + $applicationId + "}_is1'")) { throw 'WinGet identity differs from installed app registration.' }
 foreach ($required in @(('PackageVersion: ' + $release.version), ('    InstallerUrl: ' + $base + [Uri]::EscapeDataString($setup)), ('    InstallerSha256: ' + $release.installer.sha256.ToUpperInvariant()))) { if (-not $winget.Contains($required)) { throw 'WinGet package identity/hash mismatch.' } }
 Write-Output ('Verified public metadata and ' + $expected.Count + ' allowlisted assets.')
