@@ -1,36 +1,43 @@
-# 常见问题
+# 常见问题 · 1.5.6
 
-## TUN 未连接
+## 如何找到最新版
 
-在 Kumiryo 中检查 TUN 是否开启。此版本识别名为 `Kumiryo` 且处于 Up 状态的网卡；其他客户端或重命名网卡未验证。助手不会替你开启 TUN。
+运行 `artifacts/current/app/TunHotspot.exe`，或使用 `artifacts/current/packages` 中的安装包/便携包。版本和校验值见 `artifacts/current/release.json`；archive 仅供历史回查。已经安装到系统的旧版本需要单独更新，不会因整理源码自动变更。
 
-## Windows 显示“热点已开启”，但网络不通
+## 复制 exe 后打不开
 
-确认电脑原本可以联网，然后手动关闭普通热点，通过助手的“开启兼容热点”重新开启。成功状态下手机继续使用原热点名称和密码，无需重新配对。
+完整解压便携 ZIP，保留 Engine、运行库、PRI、Assets、Notices 等全部文件。不要从历史构建或其他版本补几份 DLL 混用。需要重新生成时运行 Build-Release.ps1，并检查 Test-Release.ps1 的结果。
 
-本机历史对照观察到：普通热点与 TUN 同开时 WLAN 的 forwarding 变为 Enabled 并伴随全断网；兼容入口成功后 WLAN 为 Disabled、TUN 和热点为 Enabled。该观察不等同于已经抓包证明 Windows 内核的全部成因，勿据此手改所有网卡转发状态。
+## 安装错误 5、DLL 占用或更新未完成
 
-## Windows 返回操作错误
+1.5.4 在目录页提权时有安装器自身重启调用缺陷，可能确认后仍没有 UAC，且错误被误报为未授权。1.5.6 已改为原生 Windows 提权，取消时可重试，启动失败会显示错误码与日志位置；见 [提权修复](reports/安装提权修复-20261104.md)。
 
-等待 Windows 当前切换完成后按提示手动重试。若需要恢复，可在助手中点击“关闭热点”，也可以从 Windows 快捷设置关闭热点。所有会重启 Kumiryo 或断开连接的动作都由使用者手动执行。
+使用 1.5.6 或更新的完整安装包。安装器会自动检查权限并退出本目录的工具箱界面/MCP；不要混用旧安装器和新 DLL。准备页说明将退出的范围，授权取消或外部占用时不会直接覆盖文件。静默安装需要 `/CLOSEOWNAPPS=1`，不满足权限时返回错误而不暗中提升。
 
-## exe 单独复制后打不开
+安装日志由安装器自动记录；程序备份、state.json、steps.jsonl、Restore.cmd 在安装日志记录的操作目录。提升安装保存在 `%ProgramData%\TunHotspot\Installer\<SID>\operations\<编号>`，普通安装在 `%USERPROFILE%\.FeiChuanToolbox\installer\operations\<编号>`。恢复须使用原账户和相同权限；提升备份中的 Restore.cmd 需要右键以管理员身份运行。程序在备份后又被修改时，手动恢复会拒绝覆盖。未完成更新可先重新运行安装器；保留诊断和原件。恢复的只是安装前状态，不能把原来已混版的状态当成健康版本。
 
-使用当前安装包，或完整解压 `artifacts/distribution` 中的当前便携包。必须保留 Engine、WinUI、.NET 运行库、PRI、Assets 及其他依赖，不能只复制 exe。`artifacts/win-x64` 是保留的 1.0.1 历史版，无需另行安装开发工具。
+详细范围与限制见 [升级与恢复说明](reports/安装升级修复-20261103.md)。
 
-## 安装器提示助手正在运行
+## 启动数据库异常
 
-先从托盘菜单选择“退出”，再继续安装或卸载；仅关闭窗口默认收起到托盘。退出保留当前热点，Kumiryo 可继续运行。安装器不会强制结束其他进程。
+先从全局设置查看“诊断与恢复”，记录错误编号和日志。启动数据及偏好位于 `%USERPROFILE%/.FeiChuanToolbox`，统一诊断位于其中的 diagnostics。不要删除 toolbox.db、回滚日志或恢复原件来制造空库成功；使用软件提供的核验、有效备份和恢复入口。设置、热点与配置工作区可独立于启动库使用。
 
-## 图标暂时显示旧样式
+## 如何查看日志
 
-重新打开快捷方式。应用窗口、exe 和安装包都已内置 ICO；Windows 可能暂时缓存旧的桌面图标，不需要为此重启代理或断开网络。
+全局设置的日志查看器支持类别、严重等级、时间和搜索，复制/导出仅做读取。统一诊断在 `%USERPROFILE%/.FeiChuanToolbox/diagnostics`，兼容操作记录仍在 `%LOCALAPPDATA%/TunHotspot.WinUI`。机器日志在受控 `%ProgramData%/TunHotspot/Monitor`，通过身份核对的接口读取。早期日志需结合时间和程序版本判断。
 
-## 查看记录
+## 热点开启后关闭或部分设备无法联网
 
-工具箱的扫描、建议、告警、来源标记及两轮审计在 `%LOCALAPPDATA%\TunHotspot.Toolbox`。总览显示当前权限和缺口；“最近管理员复核”是历史复核结果，不保证之后未变化。待分析保留项可能缺少当前或目标证据，不能通过猜测结论清空。
+先核对 Kumiryo TUN 和热点真实状态、设备数及热点日志，再按提示手动重试；可明确开启有限的意外断开重连。退出工具箱不主动关闭已有热点。不要根据旧机器观察直接重置所有网卡、DNS 或代理。历史兼容性记录不保证每一台安卓设备可用。
 
-操作记录：`%LOCALAPPDATA%\TunHotspot.WinUI\operations.jsonl`。
-当前状态：`%LOCALAPPDATA%\TunHotspot.WinUI\state.json`。
+## Microsoft Store 内容加载失败
 
-`user-start-request` / `user-stop-request` 是用户按钮操作；`user-operation-completed` 表示 API 成功完成。早期开发记录可能包含已经修复的启动错误，应结合时间及当前进程判断。日志不记录热点密码、SSID、MAC 或订阅凭据。
+在设置中先运行网络检查，记录代理、TUN 和端点结果。失效本地代理的受限修复和 Windows 缓存修复须按预览确认；不能把某次缓存修复成功直接认定为所有网络故障的根因。
+
+## 通知未出现或托盘关闭后找不到窗口
+
+从托盘打开工具箱，在应用内查看提醒历史和通知状态，必要时发送测试通知；Windows 通知被清空不应删除应用内告警。仅关闭窗口默认收起到托盘；更新/卸载前从托盘选择退出。
+
+## Kumiryo 配置失败
+
+保留本次操作编号、步骤日志与 DPAPI 备份；核对受支持版本和当前账户。写入或恢复不自动覆盖之后的冲突，不强制终止代理内核、远控或其他服务。详见 [配置指南](guides/Kumiryo一键配置.md)。
