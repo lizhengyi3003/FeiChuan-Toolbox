@@ -5,6 +5,7 @@ $packages = Join-Path $ReleaseDirectory 'packages'
 $setup = [IO.Path]::GetFileName($release.installer.file); $zip = [IO.Path]::GetFileName($release.portable.file)
 $expected = @($setup, ($setup + '.sha256'), $zip, ($zip + '.sha256'), 'release.json', 'sbom.cdx.json', 'feichuan-toolbox.scoop.json', 'lizhengyi3003.FeiChuanToolbox.yaml', 'SHA256SUMS.txt')
 $actual = @(Get-ChildItem -LiteralPath $packages -File | ForEach-Object Name)
+foreach ($name in $actual) { if ($name -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw 'Public asset filenames must be ASCII and URL safe.' } }
 if ($actual.Count -ne $expected.Count -or @(Compare-Object $expected $actual).Count) { throw 'Public assets differ from the explicit allowlist.' }
 $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($line in Get-Content -LiteralPath (Join-Path $packages 'SHA256SUMS.txt')) {

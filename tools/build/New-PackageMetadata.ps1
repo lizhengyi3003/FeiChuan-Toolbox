@@ -4,6 +4,8 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $release = Get-Content -LiteralPath (Join-Path $ReleaseDirectory 'release.json') -Raw | ConvertFrom-Json
 if ($release.sourceDirty) { throw 'Public package metadata requires committed source.' }
 $version = $release.version
+. (Join-Path $root 'tools\common\Artifacts.ps1')
+$names = Get-DistributionNames -RepositoryRoot $root -Version $version
 $packages = Join-Path $ReleaseDirectory 'packages'
 $sourceCommit = [string]$release.sourceCommit
 $libraries = @{}; $edges = @{}
@@ -57,7 +59,7 @@ if (-not $publisher -or -not $applicationId) { throw 'Cannot determine installer
 $productCode = '{' + $applicationId + '}_is1'
 $scoop = [ordered]@{ version = $version; description = 'Windows 11 WinUI 3 toolbox for startup management, hotspot and Kumiryo configuration'; homepage = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox'; license = 'GPL-3.0-only'
     architecture = @{ '64bit' = @{ url = $zipUrl; hash = $release.portable.sha256 } }; shortcuts = (, @('TunHotspot.exe', '飞船的小工具箱')); checkver = @{ github = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox' }
-    autoupdate = @{ architecture = @{ '64bit' = @{ url = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox/releases/download/v$version/飞船的小工具箱-$version-win11-x64.zip' } } } }
+    autoupdate = @{ architecture = @{ '64bit' = @{ url = ('https://github.com/lizhengyi3003/FeiChuan-Toolbox/releases/download/v$version/' + $names.Prefix + '-$version-win11-x64.zip') } } } }
 $scoop | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $packages 'feichuan-toolbox.scoop.json') -Encoding utf8
 $winget = @"
 # yaml-language-server: `$schema=https://aka.ms/winget-manifest.singleton.1.10.0.schema.json

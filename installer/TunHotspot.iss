@@ -4,6 +4,9 @@
 #ifndef CoordinatorSha256
   #error 请通过 Build-Installer.ps1 固定安装协调脚本的 SHA-256
 #endif
+#ifndef DistributionPrefix
+  #error 请通过 Build-Installer.ps1 提供统一的 DistributionPrefix
+#endif
 #define ProjectRoot AddBackslash(SourcePath) + ".."
 #ifndef PublishDir
   #define PublishDir ProjectRoot + "\artifacts\temp\preview\app"
@@ -27,7 +30,7 @@ SetupArchitecture=x64
 ArchitecturesAllowed=x64os
 MinVersion=10.0.22000
 OutputDir={#ProjectRoot}\artifacts\temp\preview\packages
-OutputBaseFilename=飞船的小工具箱-{#AppVersion}-Setup-x64
+OutputBaseFilename={#DistributionPrefix}-{#AppVersion}-Setup-x64
 SetupIconFile={#ProjectRoot}\src\TunHotspot.WinUI\Assets\TunHotspot.ico
 UninstallDisplayIcon={app}\TunHotspot.exe
 Compression=lzma2
