@@ -1,6 +1,6 @@
 # 飞船的小工具箱 · FeiChuan Toolbox
 
-当前版本 **1.5.7** · Windows 11 x64 · WinUI 3 / .NET 10
+当前版本 **1.5.8** · Windows 11 x64 · WinUI 3 / .NET 10
 
 [![CI](https://github.com/lizhengyi3003/FeiChuan-Toolbox/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhengyi3003/FeiChuan-Toolbox/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/lizhengyi3003/FeiChuan-Toolbox)](https://github.com/lizhengyi3003/FeiChuan-Toolbox/releases/latest)
