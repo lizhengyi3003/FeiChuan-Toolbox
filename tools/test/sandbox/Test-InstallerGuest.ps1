@@ -3,7 +3,19 @@ if($env:USERNAME -ne 'WDAGUtilityAccount' -or -not(Test-Path 'C:\TestScripts\run
 $result=[ordered]@{Time=(Get-Date).ToString('o');Checks=@()}
 $install=Join-Path $env:LOCALAPPDATA 'Toolbox installed QA'
 try{
-    $setup=Start-Process -FilePath 'C:\TestScripts\Toolbox-Setup.exe' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER',('/DIR="'+$install+'"'),'/LOG="C:\TestResults\installer-install.log"' -PassThru -Wait
+    # C:\TestScripts is a Windows Sandbox mapped folder served by the host. Inno Setup could not
+    # create its extraction directory when started from that mapping (error 5), so run a local
+    # copy, which is also how a downloaded installer is normally started.
+    $media=Join-Path $env:LOCALAPPDATA 'Toolbox setup media'
+    New-Item -ItemType Directory -Path $media -Force | Out-Null
+    $localSetup=Join-Path $media 'Toolbox-Setup.exe'
+    Copy-Item -LiteralPath 'C:\TestScripts\Toolbox-Setup.exe' -Destination $localSetup -Force
+    $result.SetupFromMapping='C:\TestScripts\Toolbox-Setup.exe'
+    $result.SetupLocalCopy=$localSetup
+    $result.Checks+='安装包复制到本地磁盘后运行'
+    $setup=Start-Process -FilePath $localSetup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER',('/DIR="'+$install+'"'),'/LOG="C:\TestResults\installer-install.log"' -PassThru -Wait
+    $result.SetupExitCode=$setup.ExitCode
+    if($setup.ExitCode -ne 0){throw ('安装程序退出码不正确：'+$setup.ExitCode)}
     if(-not(Test-Path (Join-Path $install 'Engine\TunHotspot.Engine.exe'))){throw '安装后引擎不存在。'}
     $result.Version=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $install 'TunHotspot.exe')).ProductVersion
     $expected=Get-Content -LiteralPath 'C:\Application\release.json' -Raw | ConvertFrom-Json
