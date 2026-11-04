@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup>
+  <OutputType>WinExe</OutputType><AssemblyName>kumiryo</AssemblyName><Company>com.kumiryo</Company>
+  <Version>0.2.4</Version><FileVersion>0.2.4.0</FileVersion><AssemblyTitle>TunHotspot Kumiryo QA Fixture</AssemblyTitle>
+  <Description>TunHotspot Kumiryo QA Fixture</Description><IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  <RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained>
+ </PropertyGroup>
+</Project>

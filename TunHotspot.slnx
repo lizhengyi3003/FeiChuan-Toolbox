@@ -6,13 +6,36 @@
     <File Path="README.md" />
     <File Path="CHANGELOG.md" />
     <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
     <File Path="build.ps1" />
+    <File Path="test.ps1" />
     <File Path="NuGet.Config" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/TunHotspot.Core/TunHotspot.Core.csproj" />
     <Project Path="src/TunHotspot.Engine/TunHotspot.Engine.csproj" />
     <Project Path="src/TunHotspot.WinUI/TunHotspot.WinUI.csproj" />
-    <Project Path="src/TunHotspot.Tests/TunHotspot.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <File Path="tests/README.md" />
+    <Project Path="tests/TunHotspot.Tests/TunHotspot.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Fixtures/">
+    <Project Path="tests/Fixtures/Kumiryo.Client/Kumiryo.Client.csproj" />
+    <Project Path="tests/Fixtures/Kumiryo.Integration/Kumiryo.Integration.csproj" />
+  </Folder>
+  <Folder Name="/docs/">
+    <File Path="docs/README.md" />
+    <File Path="docs/ARCHITECTURE.md" />
+    <File Path="docs/DEVELOPMENT.md" />
+    <File Path="docs/PROJECT-STRUCTURE.md" />
+    <File Path="docs/VALIDATION.md" />
+  </Folder>
+  <Folder Name="/tools/">
+    <File Path="tools/README.md" />
+    <File Path="tools/common/DotNet.ps1" />
+    <File Path="tools/build/Build-Release.ps1" />
+    <File Path="tools/build/Build-Installer.ps1" />
+    <File Path="tools/test/Test-Repository.ps1" />
   </Folder>
 </Solution>

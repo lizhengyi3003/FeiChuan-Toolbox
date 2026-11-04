@@ -13,6 +13,46 @@ internal static class Program
     {
         try
         {
+            if (SetupGate.IsBlocked(Environment.ProcessPath!)) { Console.Error.WriteLine(SetupGate.BlockedMessage); return 75; }
+            using var setupExit = args.Length > 0 && args[0] is "--mcp" or "--hotspot-worker"
+                ? SetupGate.WatchForExit(() => Environment.Exit(0)) : null;
+            if(args.Length==3&&args[0]=="--hotspot-worker"&&int.TryParse(args[1],out int parent)&&long.TryParse(args[2],out long started))return await HotspotWorker.Run(parent,started);
+            if(args.Length==1&&args[0]=="--database-health")
+            {
+                UserDataMigration.Ensure();var store=new ToolboxStore(DataPaths.UserRoot,true);
+                Console.WriteLine(Contract.Encode(new{Root=store.Root,Integrity="ok",Entries=store.Latest?.Entries.Count??0,Decisions=store.Decisions.Count,Histories=store.History.Count}));return 0;
+            }
+            if(args.Length==1&&args[0]=="--update-owned-monitor")
+            {
+                if(!Contract.Elevated)throw new UnauthorizedAccessException("更新自身机器采集组件需要 UAC。");
+                await ComponentInstaller.Install(Contract.Sid);Console.WriteLine(Contract.Encode(new{Updated=true,Version=Contract.ProductVersion}));return 0;
+            }
+            if (args.Length == 1 && args[0] == "--kumiryo-check")
+            {
+                var template = KumiryoConfigPlan.Embedded(); var preview = KumiryoConfiguration.Preview(KumiryoConfiguration.Discover(), template);
+                Console.WriteLine(Contract.Encode(new { preview.Target.Version, template.SourceVersion, Modules = KumiryoConfigPlan.Modules.Length, preview.Rules, Differences = preview.Differences.Count, preview.CanApply, preview.Blocks, preview.Checks }));
+                return preview.CanApply ? 0 : 1;
+            }
+            if (args.Length == 4 && args[0] == "--kumiryo-preview" && args[2] == "--owner")
+            {
+                if (!Contract.Elevated || args[3] != Contract.Sid) return 43;
+                return KumiryoConfiguration.RunAdministratorPreview(args[1]);
+            }
+            if (args.Length is 2 or 4 && args[0] is "--kumiryo-job" or "--kumiryo-recover")
+            {
+                if (args.Length == 4 && (args[2] != "--owner" || args[3] != Contract.Sid)) return 43;
+                if (Contract.Elevated && args.Length != 4) return 43;
+                if (args[0] == "--kumiryo-recover") return await KumiryoConfigWorker.Recover(args[1]);
+                var watch = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true };
+                foreach (string arg in new[] { "--kumiryo-watch", args[1], Environment.ProcessId.ToString(), "--owner", Contract.Sid }) watch.ArgumentList.Add(arg);
+                using var watcher = Process.Start(watch) ?? throw new IOException("恢复观察进程未启动，尚未修改配置。");
+                return await KumiryoConfigWorker.Run(args[1]);
+            }
+            if (args.Length is 3 or 5 && args[0] == "--kumiryo-watch" && int.TryParse(args[2], out int worker))
+            {
+                if (args.Length == 5 && (args[3] != "--owner" || args[4] != Contract.Sid) || Contract.Elevated && args.Length != 5) return 43;
+                return await KumiryoConfigWorker.Watch(args[1], worker);
+            }
             if (args.Length == 1 && args[0] == "--mcp") return await McpServer.Run();
             if(args.Length==1&&args[0]=="--audit-scan")return await ReadOnlyAudit.Run();
             if(args.Length==1&&args[0]=="--hotspot-diagnostics"){Console.WriteLine(Contract.Encode(HotspotDiagnostics.Read()));return 0;}
@@ -72,8 +112,8 @@ internal static class Program
                 }
                 return 0;
             }
-            Console.Error.WriteLine("TunHotspot 只读采集引擎：由工具箱启动，或使用 --mcp / --diagnostic-scan。"); return 2;
+            Console.Error.WriteLine("飞船的小工具箱 · 只读采集引擎：由工具箱启动，或使用 --mcp / --diagnostic-scan。"); return 2;
         }
-        catch (Exception ex) { Console.Error.WriteLine(ex.Message); return 1; }
+        catch (Exception ex) { new DiagnosticLog(WindowsIdentity.GetCurrent().IsSystem?DataPaths.MachineRoot:DataPaths.UserRoot).Record("引擎："+(args.FirstOrDefault()??"启动"),ex);Console.Error.WriteLine(ex.Message); return 1; }
     }
 }

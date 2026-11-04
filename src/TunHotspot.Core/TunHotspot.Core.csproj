@@ -3,9 +3,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
-    <PackageReference Include="System.Management" Version="10.0.14" />
-    <PackageReference Include="System.Diagnostics.EventLog" Version="10.0.14" />
-    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="4.0.0" />
+    <EmbeddedResource Include="Configuration\Kumiryo\Resources\KumiryoTemplate.json" LogicalName="TunHotspot.Core.KumiryoTemplate.json" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="System.Management" />
+    <PackageReference Include="System.Diagnostics.EventLog" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
   </ItemGroup>
 </Project>

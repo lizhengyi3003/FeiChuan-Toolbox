@@ -16,13 +16,14 @@
     <WindowsAppSDKDeploymentManagerInitialize>false</WindowsAppSDKDeploymentManagerInitialize>
     <SelfContained>true</SelfContained>
     <PublishTrimmed>false</PublishTrimmed>
-    <Product>TUN 热点与启动工具箱</Product>
-    <Description>WinUI 3 热点、启动入口扫描与后台运行监测工具箱</Description>
-    <ApplicationTitle>TUN 热点与启动工具箱</ApplicationTitle>
+    <Product>飞船的小工具箱</Product>
+    <Description>飞船的小工具箱</Description>
+    <ApplicationTitle>飞船的小工具箱</ApplicationTitle>
+    <AssemblyTitle>飞船的小工具箱</AssemblyTitle>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\TunHotspot.Core\TunHotspot.Core.csproj" />
-    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.6.4" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" />
     <Content Include="Assets\TunHotspot.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\TunHotspot.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Notices\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

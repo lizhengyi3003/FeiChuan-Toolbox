@@ -5,4 +5,27 @@ artifacts/
 .tools/
 *.user
 *.suo
-docs/history/
+
+# Local credentials, signing material, user databases and diagnostics
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+*.pem
+*.snk
+*.db
+*.db-wal
+*.db-shm
+*.dpapi
+*.dmp
+*.log
+*.binlog
+shared_preferences.json
+.FeiChuanToolbox/
+TestResults/
+
+# NuGet lock files are source; build caches and packages are not.
+*.nupkg
+*.snupkg

@@ -1,0 +1,56 @@
+<UserControl x:Class="TunHotspot.ConfigurationPage"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:automation="using:Microsoft.UI.Xaml.Automation">
+ <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+  <StackPanel Padding="24,8,24,24" Spacing="16">
+   <TextBlock Text="Kumiryo 一键配置" FontSize="28" FontWeight="SemiBold"/>
+   <TextBlock Text="迁移完整设置，保留本机账号与订阅。先预览、备份，再自动重新打开并逐项核验。" TextWrapping="Wrap" Opacity="0.75"/>
+   <InfoBar x:Name="Notice" IsOpen="False" IsClosable="True"/>
+   <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+    <StackPanel Spacing="10">
+     <TextBlock x:Name="TemplateLabel" FontSize="18" FontWeight="SemiBold" automation:AutomationProperties.AutomationId="Configuration.Template"/>
+     <TextBlock x:Name="TemplateDetails" TextWrapping="Wrap"/>
+     <CheckBox x:Name="UseAdministrator" Content="执行时申请管理员权限（Windows UAC；客户端以普通权限重新打开）" IsChecked="True" Checked="Privilege_Changed" Unchecked="Privilege_Changed" automation:AutomationProperties.AutomationId="Configuration.Administrator"/>
+     <ContentControl x:Name="ActionHost" HorizontalContentAlignment="Stretch"/>
+     <Expander Header="安装位置与模板详情" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+      <StackPanel Spacing="10">
+       <TextBlock Text="Kumiryo 程序"/>
+       <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBox x:Name="ExecutablePath" IsReadOnly="True"/><Button x:Name="ChooseExe" Grid.Column="1" Content="选择程序" Click="ChooseExe_Click"/>
+       </Grid>
+       <TextBlock Text="持久设置文件"/>
+       <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBox x:Name="PreferencesPath" IsReadOnly="True"/><Button x:Name="ChoosePreferences" Grid.Column="1" Content="选择文件" Click="ChoosePreferences_Click"/>
+       </Grid>
+       <TextBlock Text="完整迁移模板（不含账号、登录凭据和订阅）" TextWrapping="Wrap"/>
+       <TextBox x:Name="TemplateJson" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="260" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+      </StackPanel>
+     </Expander>
+    </StackPanel>
+   </Border>
+   <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+    <StackPanel Spacing="10">
+     <TextBlock x:Name="StatusTitle" Text="正在检测本机配置" FontSize="18" FontWeight="SemiBold" automation:AutomationProperties.AutomationId="Configuration.Status"/>
+     <TextBlock x:Name="StatusDetail" TextWrapping="Wrap"/>
+     <ProgressBar x:Name="OperationProgress" Minimum="0" Maximum="100" Value="0" automation:AutomationProperties.AutomationId="Configuration.Progress"/>
+     <TextBlock x:Name="BlockingReasons" TextWrapping="Wrap"/>
+     <ItemsControl x:Name="CheckItems">
+      <ItemsControl.ItemTemplate><DataTemplate><StackPanel Margin="0,5"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Opacity="0.7"/></StackPanel></DataTemplate></ItemsControl.ItemTemplate>
+     </ItemsControl>
+     <Expander Header="查看变更预览" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"><ItemsControl x:Name="DifferenceItems"><ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,4"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></Expander>
+    </StackPanel>
+   </Border>
+   <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+    <StackPanel Spacing="10">
+     <TextBlock Text="操作、日志与恢复" FontSize="18" FontWeight="SemiBold"/>
+     <TextBlock Text="关闭主窗口不会取消已开始的操作。异常退出后保留步骤、加密备份和恢复入口；恢复前检查是否存在之后的改动。" TextWrapping="Wrap"/>
+     <ComboBox x:Name="OperationHistory" HorizontalAlignment="Stretch" DisplayMemberPath="Label" SelectionChanged="History_SelectionChanged" automation:AutomationProperties.AutomationId="Configuration.History"/>
+     <ContentControl x:Name="HistoryActionHost" HorizontalContentAlignment="Stretch"/>
+     <TextBlock x:Name="HistorySummary" TextWrapping="Wrap"/>
+     <ItemsControl x:Name="LogItems"><ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,4"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+    </StackPanel>
+   </Border>
+  </StackPanel>
+ </ScrollViewer>
+</UserControl>

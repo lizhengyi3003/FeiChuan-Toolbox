@@ -9,3 +9,17 @@ trim_trailing_whitespace = true
 [*.{cs,xaml,csproj,ps1,iss}]
 indent_style = space
 indent_size = 4
+
+# The built-in Windows PowerShell 5.1 must decode Chinese strings consistently.
+[installer/Upgrade-Coordinator.ps1]
+charset = utf-8-bom
+
+[tools/test/sandbox/Test-InstallerRecoveryGuest.ps1]
+charset = utf-8-bom
+
+[*.{md,json,yml,yaml,svg}]
+end_of_line = lf
+
+[*.{json,yml,yaml}]
+indent_style = space
+indent_size = 2

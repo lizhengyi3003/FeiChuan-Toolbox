@@ -1,0 +1,940 @@
+{
+  "schema": 1,
+  "name": "完整设置（源自本机）",
+  "sourceVersion": "0.2.4",
+  "captured": "2026-11-02T00:13:25.240125+08:00",
+  "settings": {
+    "overrideDns": true,
+    "globalAddedRules": [
+      {
+        "id": 370543881726465139,
+        "value": "DOMAIN-SUFFIX,wns.windows.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726465140,
+        "value": "DOMAIN-SUFFIX,notify.windows.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726465024,
+        "value": "DOMAIN-SUFFIX,phonelink.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726465025,
+        "value": "DOMAIN-SUFFIX,my.microsoftpersonalcontent.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726465026,
+        "value": "DOMAIN-SUFFIX,cs.dds.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726465029,
+        "value": "PROCESS-NAME,YourPhoneAppProxy.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726465032,
+        "value": "PROCESS-NAME,CrossDeviceSettingsHost.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726465033,
+        "value": "PROCESS-NAME,CrossDeviceShareHost.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726465034,
+        "value": "PROCESS-NAME,CrossDeviceStreamingHost.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726465035,
+        "value": "PROCESS-NAME,CrossDeviceResume.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726465036,
+        "value": "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve",
+        "order": null
+      },
+      {
+        "id": 370543881726465037,
+        "value": "IP-CIDR,172.16.0.0/12,DIRECT,no-resolve",
+        "order": null
+      },
+      {
+        "id": 370543881726465038,
+        "value": "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve",
+        "order": null
+      },
+      {
+        "id": 370543881726465039,
+        "value": "IP-CIDR,169.254.0.0/16,DIRECT,no-resolve",
+        "order": null
+      },
+      {
+        "id": 370543881726464920,
+        "value": "DOMAIN-SUFFIX,edge.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464921,
+        "value": "DOMAIN-SUFFIX,api-edge.cognitive.microsofttranslator.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464922,
+        "value": "DOMAIN-SUFFIX,config.edge.skype.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464923,
+        "value": "DOMAIN-SUFFIX,login.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464924,
+        "value": "DOMAIN-SUFFIX,ssl.live.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464820,
+        "value": "DOMAIN-SUFFIX,onedrive.live.com,BiXin Network",
+        "order": null
+      },
+      {
+        "id": 370543881726464692,
+        "value": "PROCESS-NAME,OneDrive.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464693,
+        "value": "DOMAIN-SUFFIX,onedrive.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464695,
+        "value": "DOMAIN-SUFFIX,1drv.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464696,
+        "value": "DOMAIN-SUFFIX,1drv.ms,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464697,
+        "value": "DOMAIN-SUFFIX,livefilestore.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464698,
+        "value": "DOMAIN-SUFFIX,live.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464700,
+        "value": "DOMAIN-SUFFIX,storage.msn.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464701,
+        "value": "DOMAIN-SUFFIX,oauth.live.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464702,
+        "value": "DOMAIN-SUFFIX,g.live.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464703,
+        "value": "DOMAIN-SUFFIX,skydrive.live.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464704,
+        "value": "DOMAIN-SUFFIX,photos.live.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464705,
+        "value": "DOMAIN-SUFFIX,officeapps.live.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464706,
+        "value": "DOMAIN-SUFFIX,groups.office.live.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464709,
+        "value": "DOMAIN-SUFFIX,mesh.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464710,
+        "value": "DOMAIN-SUFFIX,oneclient.sfx.ms,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464711,
+        "value": "DOMAIN-SUFFIX,p.sfx.ms,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464712,
+        "value": "DOMAIN-SUFFIX,svc.ms,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464713,
+        "value": "DOMAIN-SUFFIX,spoprod-a.akamaihd.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464718,
+        "value": "DOMAIN-SUFFIX,token.cp.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464719,
+        "value": "DOMAIN-SUFFIX,posarprodcssservice.accesscontrol.windows.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464720,
+        "value": "DOMAIN-SUFFIX,redemptionservices.accesscontrol.windows.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464587,
+        "value": "PROCESS-NAME,smartscreen.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464588,
+        "value": "PROCESS-NAME,CHXSmartScreen.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464589,
+        "value": "DOMAIN-SUFFIX,smartscreen.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464590,
+        "value": "DOMAIN-SUFFIX,smartscreen-prod.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464591,
+        "value": "DOMAIN-SUFFIX,checkappexec.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464592,
+        "value": "DOMAIN-SUFFIX,urs.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464483,
+        "value": "DOMAIN-SUFFIX,commerce.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464484,
+        "value": "DOMAIN-SUFFIX,graph.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464485,
+        "value": "DOMAIN-SUFFIX,profile.xboxlive.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464486,
+        "value": "DOMAIN-SUFFIX,xsts.auth.xboxlive.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464487,
+        "value": "DOMAIN-SUFFIX,storage.live.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464337,
+        "value": "PROCESS-NAME,CrossDeviceService.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464338,
+        "value": "PROCESS-NAME,CrossDeviceFilesHost.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464339,
+        "value": "PROCESS-NAME,PhoneExperienceHost.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464340,
+        "value": "PROCESS-NAME,YourPhoneAppProxyHost.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464356,
+        "value": "DOMAIN-SUFFIX,wcpstatic.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464357,
+        "value": "DOMAIN-SUFFIX,store-images.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464358,
+        "value": "DOMAIN-SUFFIX,dcg.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464217,
+        "value": "PROCESS-NAME,WinStore.App.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464218,
+        "value": "PROCESS-NAME,StoreExperienceHost.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464219,
+        "value": "PROCESS-NAME,StoreDesktopExtension.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464220,
+        "value": "DOMAIN-SUFFIX,apps.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464221,
+        "value": "DOMAIN-SUFFIX,displaycatalog.mp.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464222,
+        "value": "DOMAIN-SUFFIX,storeedgefd.dsx.mp.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464223,
+        "value": "DOMAIN-SUFFIX,livetileedge.dsx.mp.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464224,
+        "value": "DOMAIN-SUFFIX,store-images.s-microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464225,
+        "value": "DOMAIN-SUFFIX,storecatalogrevocation.storequality.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464226,
+        "value": "DOMAIN-SUFFIX,licensing.mp.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464227,
+        "value": "DOMAIN-SUFFIX,licensing.md.mp.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464228,
+        "value": "DOMAIN-SUFFIX,purchase.md.mp.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464229,
+        "value": "DOMAIN-SUFFIX,collections.md.mp.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464230,
+        "value": "DOMAIN-SUFFIX,delivery.mp.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464231,
+        "value": "DOMAIN-SUFFIX,prod.do.dsp.mp.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464232,
+        "value": "DOMAIN-SUFFIX,storeedgecdn.microsoft.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464233,
+        "value": "DOMAIN-SUFFIX,img-prod-cms-rt-microsoft-com.akamaized.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464234,
+        "value": "DOMAIN-SUFFIX,img-s-msn-com.akamaized.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464100,
+        "value": "PROCESS-NAME,olk.exe,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464101,
+        "value": "DOMAIN-SUFFIX,outlook.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464102,
+        "value": "DOMAIN-SUFFIX,outlook.office.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464103,
+        "value": "DOMAIN-SUFFIX,outlook.office365.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464104,
+        "value": "DOMAIN-SUFFIX,outlook.cloud.microsoft,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464105,
+        "value": "DOMAIN-SUFFIX,outlook.live.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464106,
+        "value": "DOMAIN-SUFFIX,substrate.office.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464107,
+        "value": "DOMAIN-SUFFIX,outlook.office.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464108,
+        "value": "DOMAIN-SUFFIX,res.cdn.office.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464109,
+        "value": "DOMAIN-SUFFIX,attachments.office.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464110,
+        "value": "DOMAIN-SUFFIX,login.microsoftonline.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464111,
+        "value": "DOMAIN-SUFFIX,login.live.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464112,
+        "value": "DOMAIN-SUFFIX,login.windows.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464113,
+        "value": "DOMAIN-SUFFIX,account.live.com,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464114,
+        "value": "DOMAIN-SUFFIX,msauth.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464115,
+        "value": "DOMAIN-SUFFIX,msftauth.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464116,
+        "value": "DOMAIN-SUFFIX,msauthimages.net,DIRECT",
+        "order": null
+      },
+      {
+        "id": 370543881726464117,
+        "value": "DOMAIN-SUFFIX,msftauthimages.net,DIRECT",
+        "order": null
+      }
+    ],
+    "appSettingProps": {
+      "locale": null,
+      "onlyStatisticsProxy": true,
+      "autoLaunch": false,
+      "autoRun": false,
+      "silentLaunch": false,
+      "openLogs": false,
+      "closeConnections": true,
+      "skipConnectionCountdown": false,
+      "testUrl": "https://cp.cloudflare.com/generate_204",
+      "delayTestMode": "url",
+      "isAnimateToPage": true,
+      "autoCheckUpdate": true,
+      "showLabel": false,
+      "minimizeOnExit": true,
+      "hidden": false,
+      "developerMode": false,
+      "restoreStrategy": "compatible",
+      "showTrayTitle": true,
+      "publicIpHideAddress": false,
+      "publicIpHideDomestic": false,
+      "publicIpHideInternational": false,
+      "homeStatusItems": [
+        "publicIp",
+        "serviceCheck"
+      ],
+      "homeStatusLayout": "combined"
+    },
+    "networkProps": {
+      "systemProxy": true,
+      "bypassDomain": [
+        "localhost",
+        "*.local",
+        "127.*",
+        "10.*",
+        "172.16.*",
+        "172.17.*",
+        "172.18.*",
+        "172.19.*",
+        "172.20.*",
+        "172.21.*",
+        "172.22.*",
+        "172.23.*",
+        "172.24.*",
+        "172.25.*",
+        "172.26.*",
+        "172.27.*",
+        "172.28.*",
+        "172.29.*",
+        "172.30.*",
+        "172.31.*",
+        "192.168.*",
+        "outlook.com",
+        "*.outlook.com",
+        "outlook.office.com",
+        "*.outlook.office.com",
+        "outlook.office365.com",
+        "*.outlook.office365.com",
+        "outlook.cloud.microsoft",
+        "*.outlook.cloud.microsoft",
+        "outlook.live.com",
+        "*.outlook.live.com",
+        "substrate.office.com",
+        "*.substrate.office.com",
+        "outlook.office.net",
+        "*.outlook.office.net",
+        "res.cdn.office.net",
+        "*.res.cdn.office.net",
+        "attachments.office.net",
+        "*.attachments.office.net",
+        "login.microsoftonline.com",
+        "*.login.microsoftonline.com",
+        "login.live.com",
+        "*.login.live.com",
+        "login.windows.net",
+        "*.login.windows.net",
+        "account.live.com",
+        "*.account.live.com",
+        "msauth.net",
+        "*.msauth.net",
+        "msftauth.net",
+        "*.msftauth.net",
+        "msauthimages.net",
+        "*.msauthimages.net",
+        "msftauthimages.net",
+        "*.msftauthimages.net",
+        "apps.microsoft.com",
+        "*.apps.microsoft.com",
+        "displaycatalog.mp.microsoft.com",
+        "*.displaycatalog.mp.microsoft.com",
+        "storeedgefd.dsx.mp.microsoft.com",
+        "*.storeedgefd.dsx.mp.microsoft.com",
+        "livetileedge.dsx.mp.microsoft.com",
+        "*.livetileedge.dsx.mp.microsoft.com",
+        "store-images.s-microsoft.com",
+        "*.store-images.s-microsoft.com",
+        "storecatalogrevocation.storequality.microsoft.com",
+        "*.storecatalogrevocation.storequality.microsoft.com",
+        "licensing.mp.microsoft.com",
+        "*.licensing.mp.microsoft.com",
+        "licensing.md.mp.microsoft.com",
+        "*.licensing.md.mp.microsoft.com",
+        "purchase.md.mp.microsoft.com",
+        "*.purchase.md.mp.microsoft.com",
+        "collections.md.mp.microsoft.com",
+        "*.collections.md.mp.microsoft.com",
+        "delivery.mp.microsoft.com",
+        "*.delivery.mp.microsoft.com",
+        "prod.do.dsp.mp.microsoft.com",
+        "*.prod.do.dsp.mp.microsoft.com",
+        "storeedgecdn.microsoft.com",
+        "*.storeedgecdn.microsoft.com",
+        "img-prod-cms-rt-microsoft-com.akamaized.net",
+        "*.img-prod-cms-rt-microsoft-com.akamaized.net",
+        "img-s-msn-com.akamaized.net",
+        "*.img-s-msn-com.akamaized.net",
+        "wcpstatic.microsoft.com",
+        "*.wcpstatic.microsoft.com",
+        "store-images.microsoft.com",
+        "*.store-images.microsoft.com",
+        "dcg.microsoft.com",
+        "*.dcg.microsoft.com",
+        "commerce.microsoft.com",
+        "*.commerce.microsoft.com",
+        "graph.microsoft.com",
+        "*.graph.microsoft.com",
+        "profile.xboxlive.com",
+        "*.profile.xboxlive.com",
+        "xsts.auth.xboxlive.com",
+        "*.xsts.auth.xboxlive.com",
+        "storage.live.com",
+        "*.storage.live.com",
+        "smartscreen.microsoft.com",
+        "*.smartscreen.microsoft.com",
+        "smartscreen-prod.microsoft.com",
+        "*.smartscreen-prod.microsoft.com",
+        "checkappexec.microsoft.com",
+        "*.checkappexec.microsoft.com",
+        "urs.microsoft.com",
+        "*.urs.microsoft.com",
+        "onedrive.com",
+        "*.onedrive.com",
+        "1drv.com",
+        "*.1drv.com",
+        "1drv.ms",
+        "*.1drv.ms",
+        "livefilestore.com",
+        "*.livefilestore.com",
+        "live.net",
+        "*.live.net",
+        "storage.msn.com",
+        "*.storage.msn.com",
+        "oauth.live.com",
+        "*.oauth.live.com",
+        "g.live.com",
+        "*.g.live.com",
+        "skydrive.live.com",
+        "*.skydrive.live.com",
+        "photos.live.com",
+        "*.photos.live.com",
+        "officeapps.live.com",
+        "*.officeapps.live.com",
+        "groups.office.live.com",
+        "*.groups.office.live.com",
+        "groups.photos.live.com",
+        "*.groups.photos.live.com",
+        "groups.skydrive.live.com",
+        "*.groups.skydrive.live.com",
+        "mesh.com",
+        "*.mesh.com",
+        "oneclient.sfx.ms",
+        "*.oneclient.sfx.ms",
+        "p.sfx.ms",
+        "*.p.sfx.ms",
+        "svc.ms",
+        "*.svc.ms",
+        "spoprod-a.akamaihd.net",
+        "*.spoprod-a.akamaihd.net",
+        "token.cp.microsoft.com",
+        "*.token.cp.microsoft.com",
+        "posarprodcssservice.accesscontrol.windows.net",
+        "*.posarprodcssservice.accesscontrol.windows.net",
+        "redemptionservices.accesscontrol.windows.net",
+        "*.redemptionservices.accesscontrol.windows.net",
+        "edge.microsoft.com",
+        "*.edge.microsoft.com",
+        "api-edge.cognitive.microsofttranslator.com",
+        "*.api-edge.cognitive.microsofttranslator.com",
+        "config.edge.skype.com",
+        "*.config.edge.skype.com",
+        "login.microsoft.com",
+        "*.login.microsoft.com",
+        "ssl.live.com",
+        "*.ssl.live.com",
+        "phonelink.microsoft.com",
+        "*.phonelink.microsoft.com",
+        "my.microsoftpersonalcontent.com",
+        "*.my.microsoftpersonalcontent.com",
+        "cs.dds.microsoft.com",
+        "*.cs.dds.microsoft.com",
+        "wns.windows.com",
+        "*.wns.windows.com",
+        "notify.windows.com",
+        "*.notify.windows.com"
+      ],
+      "routeMode": "config",
+      "autoSetSystemDns": true,
+      "appendSystemDns": false
+    },
+    "vpnProps": {
+      "enable": true,
+      "systemProxy": true,
+      "ipv6": false,
+      "allowBypass": true,
+      "dnsHijacking": false,
+      "accessControlProps": {
+        "enable": false,
+        "mode": "rejectSelected",
+        "acceptList": [],
+        "rejectList": [],
+        "excludeSelf": true,
+        "sort": "none",
+        "isFilterSystemApp": true,
+        "isFilterNonInternetApp": true
+      }
+    },
+    "themeProps": {
+      "themeMode": "system"
+    },
+    "proxiesStyleProps": {
+      "type": "tab",
+      "sortType": "none",
+      "layout": "standard",
+      "iconStyle": "standard",
+      "cardType": "expand"
+    },
+    "windowProps": {
+      "width": 0.0,
+      "height": 0.0,
+      "top": null,
+      "left": null
+    },
+    "patchClashConfig": {
+      "mixed-port": 7890,
+      "socks-port": 0,
+      "port": 0,
+      "redir-port": 0,
+      "tproxy-port": 0,
+      "mode": "rule",
+      "allow-lan": true,
+      "log-level": "error",
+      "ipv6": false,
+      "find-process-mode": "always",
+      "keep-alive-interval": 30,
+      "unified-delay": true,
+      "tcp-concurrent": true,
+      "tun": {
+        "enable": true,
+        "device": "Kumiryo",
+        "auto-route": false,
+        "stack": "gvisor",
+        "dns-hijack": [
+          "any:53"
+        ],
+        "route-address": []
+      },
+      "dns": {
+        "enable": true,
+        "listen": "127.0.0.1:1053",
+        "prefer-h3": false,
+        "use-hosts": true,
+        "use-system-hosts": true,
+        "respect-rules": true,
+        "ipv6": false,
+        "default-nameserver": [
+          "223.5.5.5",
+          "223.6.6.6"
+        ],
+        "enhanced-mode": "fake-ip",
+        "fake-ip-range": "198.18.0.1/16",
+        "fake-ip-filter": [
+          "*.lan",
+          "localhost.ptlogin2.qq.com",
+          "localhost.work.weixin.qq.com",
+          "+.weixin.qq.com",
+          "+.wechat.com",
+          "+.qpic.cn",
+          "+.qlogo.cn",
+          "+.weixin.com",
+          "+.outlook.com",
+          "+.outlook.office.com",
+          "+.outlook.office365.com",
+          "+.outlook.cloud.microsoft",
+          "+.outlook.live.com",
+          "+.substrate.office.com",
+          "+.outlook.office.net",
+          "+.res.cdn.office.net",
+          "+.attachments.office.net",
+          "+.login.microsoftonline.com",
+          "+.login.live.com",
+          "+.login.windows.net",
+          "+.account.live.com",
+          "+.msauth.net",
+          "+.msftauth.net",
+          "+.msauthimages.net",
+          "+.msftauthimages.net",
+          "+.apps.microsoft.com",
+          "+.displaycatalog.mp.microsoft.com",
+          "+.storeedgefd.dsx.mp.microsoft.com",
+          "+.livetileedge.dsx.mp.microsoft.com",
+          "+.store-images.s-microsoft.com",
+          "+.storecatalogrevocation.storequality.microsoft.com",
+          "+.licensing.mp.microsoft.com",
+          "+.licensing.md.mp.microsoft.com",
+          "+.purchase.md.mp.microsoft.com",
+          "+.collections.md.mp.microsoft.com",
+          "+.delivery.mp.microsoft.com",
+          "+.prod.do.dsp.mp.microsoft.com",
+          "+.storeedgecdn.microsoft.com",
+          "+.img-prod-cms-rt-microsoft-com.akamaized.net",
+          "+.img-s-msn-com.akamaized.net",
+          "+.wcpstatic.microsoft.com",
+          "+.store-images.microsoft.com",
+          "+.dcg.microsoft.com",
+          "+.commerce.microsoft.com",
+          "+.graph.microsoft.com",
+          "+.profile.xboxlive.com",
+          "+.xsts.auth.xboxlive.com",
+          "+.storage.live.com",
+          "+.smartscreen.microsoft.com",
+          "+.smartscreen-prod.microsoft.com",
+          "+.checkappexec.microsoft.com",
+          "+.urs.microsoft.com",
+          "+.onedrive.com",
+          "+.onedrive.live.com",
+          "+.1drv.com",
+          "+.1drv.ms",
+          "+.livefilestore.com",
+          "+.live.net",
+          "+.storage.msn.com",
+          "+.oauth.live.com",
+          "+.g.live.com",
+          "+.skydrive.live.com",
+          "+.photos.live.com",
+          "+.officeapps.live.com",
+          "+.groups.office.live.com",
+          "+.groups.photos.live.com",
+          "+.groups.skydrive.live.com",
+          "+.mesh.com",
+          "+.oneclient.sfx.ms",
+          "+.p.sfx.ms",
+          "+.svc.ms",
+          "+.spoprod-a.akamaihd.net",
+          "+.token.cp.microsoft.com",
+          "+.posarprodcssservice.accesscontrol.windows.net",
+          "+.redemptionservices.accesscontrol.windows.net",
+          "+.edge.microsoft.com",
+          "+.api-edge.cognitive.microsofttranslator.com",
+          "+.config.edge.skype.com",
+          "+.login.microsoft.com",
+          "+.ssl.live.com",
+          "+.phonelink.microsoft.com",
+          "+.my.microsoftpersonalcontent.com",
+          "+.cs.dds.microsoft.com",
+          "+.local",
+          "+.wns.windows.com",
+          "+.notify.windows.com"
+        ],
+        "nameserver-policy": {
+          "geosite:cn": "https://doh.pub/dns-query",
+          "+.onedrive.com": "https://doh.pub/dns-query",
+          "+.onedrive.live.com": "https://doh.opendns.com/dns-query",
+          "+.1drv.com": "https://doh.pub/dns-query",
+          "+.1drv.ms": "https://doh.pub/dns-query",
+          "+.livefilestore.com": "https://doh.pub/dns-query",
+          "+.live.net": "https://doh.pub/dns-query",
+          "+.storage.live.com": "https://doh.pub/dns-query",
+          "+.storage.msn.com": "https://doh.pub/dns-query",
+          "+.oauth.live.com": "https://doh.pub/dns-query",
+          "+.g.live.com": "https://doh.pub/dns-query",
+          "+.skydrive.live.com": "https://doh.pub/dns-query",
+          "+.photos.live.com": "https://doh.pub/dns-query",
+          "+.officeapps.live.com": "https://doh.pub/dns-query",
+          "+.groups.office.live.com": "https://doh.pub/dns-query",
+          "+.groups.photos.live.com": "https://doh.pub/dns-query",
+          "+.groups.skydrive.live.com": "https://doh.pub/dns-query",
+          "+.mesh.com": "https://doh.pub/dns-query",
+          "+.oneclient.sfx.ms": "https://doh.pub/dns-query",
+          "+.p.sfx.ms": "https://doh.pub/dns-query",
+          "+.svc.ms": "https://doh.pub/dns-query",
+          "+.spoprod-a.akamaihd.net": "https://doh.pub/dns-query",
+          "+.graph.microsoft.com": "https://doh.pub/dns-query",
+          "+.login.live.com": "https://doh.pub/dns-query",
+          "+.login.windows.net": "https://doh.pub/dns-query",
+          "+.login.microsoftonline.com": "https://doh.pub/dns-query",
+          "+.token.cp.microsoft.com": "https://doh.pub/dns-query",
+          "+.posarprodcssservice.accesscontrol.windows.net": "https://doh.pub/dns-query",
+          "+.redemptionservices.accesscontrol.windows.net": "https://doh.pub/dns-query",
+          "+.smartscreen.microsoft.com": "https://doh.pub/dns-query",
+          "+.smartscreen-prod.microsoft.com": "https://doh.pub/dns-query",
+          "+.checkappexec.microsoft.com": "https://doh.pub/dns-query",
+          "+.urs.microsoft.com": "https://doh.pub/dns-query",
+          "+.edge.microsoft.com": "https://doh.opendns.com/dns-query",
+          "+.api-edge.cognitive.microsofttranslator.com": "https://doh.opendns.com/dns-query",
+          "+.config.edge.skype.com": "https://doh.opendns.com/dns-query",
+          "+.login.microsoft.com": "https://doh.opendns.com/dns-query",
+          "+.ssl.live.com": "https://doh.opendns.com/dns-query",
+          "+.phonelink.microsoft.com": "https://doh.opendns.com/dns-query",
+          "+.my.microsoftpersonalcontent.com": "https://doh.opendns.com/dns-query",
+          "+.cs.dds.microsoft.com": "https://doh.opendns.com/dns-query",
+          "+.wns.windows.com": "https://doh.pub/dns-query",
+          "+.notify.windows.com": "https://doh.pub/dns-query",
+          "+.account.live.com": "system",
+          "+.store-images.s-microsoft.com": "system",
+          "geosite:gfw": "https://doh.opendns.com/dns-query"
+        },
+        "nameserver": [
+          "https://dns.alidns.com/dns-query#DIRECT",
+          "https://doh.pub/dns-query#DIRECT"
+        ],
+        "fallback": [
+          "https://doh.opendns.com/dns-query"
+        ],
+        "proxy-server-nameserver": [
+          "https://dns.alidns.com/dns-query#DIRECT",
+          "https://doh.pub/dns-query#DIRECT"
+        ],
+        "fallback-filter": {
+          "geoip": true,
+          "geoip-code": "CN",
+          "geosite": [],
+          "ipcidr": [
+            "240.0.0.0/4"
+          ],
+          "domain": [
+            "+.google.com",
+            "+.facebook.com",
+            "+.youtube.com"
+          ]
+        }
+      },
+      "geox-url": {
+        "mmdb": "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb",
+        "asn": "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/GeoLite2-ASN.mmdb",
+        "geoip": "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat",
+        "geosite": "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
+      },
+      "geodata-loader": "memconservative",
+      "proxy-groups": [],
+      "rule": [],
+      "global-ua": null,
+      "external-controller": "",
+      "hosts": {}
+    }
+  }
+}
