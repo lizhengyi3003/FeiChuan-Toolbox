@@ -1,0 +1,98 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: pwsh
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+jobs:
+  release:
+    name: Build and publish verified packages
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-2025
+    timeout-minutes: 50
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - name: Validate immutable release identity
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [xml]$product = Get-Content -LiteralPath Directory.Build.props
+          $version = [string]$product.Project.PropertyGroup.Version
+          if ($env:RELEASE_TAG -cne ('v' + $version)) { throw 'Tag does not match product version.' }
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE) { throw 'Release commit must belong to main.' }
+          ./tools/security/Test-Workflows.ps1
+          ./tools/security/Test-Secrets.ps1 -History
+          ./tools/security/Test-Dependencies.ps1
+      - name: Product checks
+        run: ./test.ps1
+      - name: Prepare signed official Inno Setup compiler
+        run: ./tools/build/Initialize-InstallerTools.ps1
+      - name: Build and verify complete distribution
+        run: ./tools/build/Build-Release.ps1
+      - name: Generate SBOM and package manager manifests
+        run: ./tools/build/New-PackageMetadata.ps1 -ReleaseDirectory artifacts/current
+      - name: Verify final distribution
+        run: ./tools/test/Test-Release.ps1
+      - name: Attest public packages
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: artifacts/current/packages/*
+      - name: Attest dependency inventory for application packages
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            artifacts/current/packages/*.exe
+            artifacts/current/packages/*.zip
+          sbom-path: artifacts/current/packages/sbom.cdx.json
+      - name: Publish complete release atomically from a draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          $notes = @'
+          Windows 11 x64. The installer and portable ZIP contain the application runtimes.
+          Verify SHA256SUMS.txt and GitHub artifact attestations before use.
+          Binaries are currently not Authenticode signed.
+          The tag contains the GPL-3.0 source and third-party notices.
+          Package-manager manifests are provided for review; no community-store listing is implied.
+          '@
+          $file = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          $notes | Set-Content -LiteralPath $file -Encoding utf8
+          $existingJson = gh release view $env:RELEASE_TAG --json isDraft,targetCommitish 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $existing = $existingJson | ConvertFrom-Json
+            if (-not $existing.isDraft -or $existing.targetCommitish -ne $env:RELEASE_COMMIT) { throw 'An existing public release or unrelated draft cannot be overwritten.' }
+          } else {
+            gh release create $env:RELEASE_TAG --verify-tag --draft --target $env:RELEASE_COMMIT --title ('飞船的小工具箱 ' + $env:RELEASE_TAG) --notes-file $file
+            if ($LASTEXITCODE) { throw 'Draft creation failed.' }
+          }
+          $assets = @(Get-ChildItem -LiteralPath artifacts/current/packages -File | ForEach-Object FullName)
+          gh release upload $env:RELEASE_TAG @assets --clobber
+          if ($LASTEXITCODE) { throw 'Upload failed; the release remains a draft.' }
+          gh release edit $env:RELEASE_TAG --draft=false --latest
+          if ($LASTEXITCODE) { throw 'Release publication failed.' }

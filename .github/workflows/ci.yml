@@ -1,0 +1,100 @@
+name: CI
+on:
+  push:
+    branches: [main, 'codex/**', 'feature/**']
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '10 2 * * 2'
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: pwsh
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+jobs:
+  repository:
+    name: Repository checks
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Structure and documentation
+        run: ./tools/test/Test-Repository.ps1
+      - name: Workflow validation
+        run: ./tools/security/Test-Workflows.ps1
+  windows:
+    name: Windows build and tests
+    runs-on: windows-2025
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - name: Locked restore
+        run: dotnet restore TunHotspot.slnx -p:Platform=x64 --locked-mode
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
+        with:
+          languages: csharp
+          build-mode: manual
+          queries: security-extended
+      - name: Build all projects
+        run: dotnet build TunHotspot.slnx -c Release -p:Platform=x64 -p:UseSharedCompilation=false --no-restore
+      - name: Product checks
+        run: ./test.ps1 -NoRestore
+      - name: Analyze CodeQL
+        uses: github/codeql-action/analyze@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
+        with:
+          category: /language:csharp
+  supply-chain:
+    name: Supply chain checks
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      - name: Source and full-history credential scan
+        run: ./tools/security/Test-Secrets.ps1 -History
+      - name: Direct and transitive vulnerability audit
+        run: ./tools/security/Test-Dependencies.ps1
+      - name: Review pull request dependencies
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+  required:
+    name: CI required
+    if: always()
+    needs: [repository, windows, supply-chain]
+    runs-on: windows-2025
+    timeout-minutes: 5
+    env:
+      RESULTS: ${{ join(needs.*.result, ',') }}
+    steps:
+      - name: Require all checks
+        run: |
+          if ($env:RESULTS -ne 'success,success,success') {
+            throw 'A required check failed, was cancelled, or was skipped.'
+          }

@@ -1,0 +1,39 @@
+name: 错误报告
+description: 提供复现步骤和脱敏证据。
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: 请勿提交账号、订阅、设备编号、完整启动数据库或原始配置。安全漏洞使用私密报告入口。
+  - type: input
+    id: version
+    attributes:
+      label: 工具箱版本 / Windows 版本
+      placeholder: 例如 1.5.6 / Windows 11 26100
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 功能
+      options: [启动管理, 兼容热点, Kumiryo 配置, 设置与托盘, 安装与升级, 其他]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤、预期与实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 错误编号和脱敏日志
+      description: 提交前人工检查路径、命令参数、图片与日志中的敏感信息。
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私检查
+      options:
+        - label: 已检查并去除凭据、订阅和私人标识。
+          required: true

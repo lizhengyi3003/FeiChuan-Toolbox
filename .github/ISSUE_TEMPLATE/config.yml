@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 私密报告安全漏洞
+    url: https://github.com/lizhengyi3003/FeiChuan-Toolbox/security/advisories/new
+    about: 提权、凭据、命令执行、数据泄漏等问题请勿公开提交。
+  - name: 使用说明与故障排查
+    url: https://github.com/lizhengyi3003/FeiChuan-Toolbox/blob/main/docs/TROUBLESHOOTING.md
+    about: 先检查版本、日志编号和已知限制。

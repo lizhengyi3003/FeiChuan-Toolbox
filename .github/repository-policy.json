@@ -1,0 +1,52 @@
+{
+  "repository": "lizhengyi3003/FeiChuan-Toolbox",
+  "settings": {
+    "description": "Windows 11 WinUI 3 小工具箱：启动管理、兼容热点与 Kumiryo 配置迁移。GPL-3.0。",
+    "has_issues": true,
+    "has_wiki": true,
+    "has_projects": false,
+    "allow_squash_merge": true,
+    "allow_merge_commit": false,
+    "allow_rebase_merge": false,
+    "allow_auto_merge": false,
+    "allow_update_branch": true,
+    "delete_branch_on_merge": true
+  },
+  "requests": [
+    { "method": "PUT", "path": "/topics", "body": { "names": ["windows-11", "winui3", "dotnet", "startup-manager", "hotspot", "kumiryo", "gpl-3-0"] } },
+    { "method": "PUT", "path": "/vulnerability-alerts" },
+    { "method": "PUT", "path": "/automated-security-fixes" },
+    { "method": "PUT", "path": "/private-vulnerability-reporting" },
+    { "method": "PATCH", "path": "", "body": { "security_and_analysis": { "secret_scanning": { "status": "enabled" }, "secret_scanning_push_protection": { "status": "enabled" } } } },
+    { "method": "PUT", "path": "/actions/permissions", "body": { "enabled": true, "allowed_actions": "selected", "sha_pinning_required": true } },
+    { "method": "PUT", "path": "/actions/permissions/selected-actions", "body": { "github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": [] } },
+    { "method": "PUT", "path": "/actions/permissions/workflow", "body": { "default_workflow_permissions": "read", "can_approve_pull_request_reviews": false } },
+    { "method": "PUT", "path": "/actions/permissions/fork-pr-contributor-approval", "body": { "approval_policy": "all_external_contributors" } },
+    { "method": "PUT", "path": "/immutable-releases" },
+    { "method": "PUT", "path": "/environments/release", "body": { "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } } }
+  ],
+  "rulesets": [
+    {
+      "name": "FeiChuan main protection",
+      "target": "branch",
+      "enforcement": "active",
+      "bypass_actors": [{ "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }],
+      "conditions": { "ref_name": { "include": ["refs/heads/main"], "exclude": [] } },
+      "rules": [
+        { "type": "deletion" },
+        { "type": "non_fast_forward" },
+        { "type": "required_linear_history" },
+        { "type": "pull_request", "parameters": { "required_approving_review_count": 0, "dismiss_stale_reviews_on_push": true, "require_code_owner_review": false, "require_last_push_approval": false, "required_review_thread_resolution": true, "allowed_merge_methods": ["squash"] } },
+        { "type": "required_status_checks", "parameters": { "strict_required_status_checks_policy": true, "required_status_checks": [{ "context": "CI required", "integration_id": 15368 }] } }
+      ]
+    },
+    {
+      "name": "FeiChuan release tags",
+      "target": "tag",
+      "enforcement": "active",
+      "bypass_actors": [{ "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }],
+      "conditions": { "ref_name": { "include": ["refs/tags/v*"], "exclude": [] } },
+      "rules": [{ "type": "creation" }, { "type": "update" }, { "type": "deletion" }, { "type": "non_fast_forward" }]
+    }
+  ]
+}
