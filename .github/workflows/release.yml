@@ -110,17 +110,24 @@ jobs:
           $assets = @(Get-ChildItem -LiteralPath artifacts/current/packages -File | ForEach-Object FullName)
           gh release upload $env:RELEASE_TAG @assets --clobber
           if ($LASTEXITCODE) { throw 'Upload failed; the release remains a draft.' }
-          $remoteJson = gh api ('repos/' + $env:REPOSITORY + '/releases/tags/' + $env:RELEASE_TAG)
-          if ($LASTEXITCODE) { throw 'Uploaded draft could not be read back.' }
-          $remoteAssets = @(($remoteJson | ConvertFrom-Json).assets)
-          if ($remoteAssets.Count -ne $assets.Count) { throw 'Uploaded draft asset count differs from verified local assets.' }
-          foreach ($asset in $assets) {
-            $name = [IO.Path]::GetFileName($asset)
-            $match = @($remoteAssets | Where-Object { $_.name -ceq $name })
-            $digest = 'sha256:' + (Get-FileHash -LiteralPath $asset).Hash.ToLowerInvariant()
-            if ($match.Count -ne 1 -or $match[0].digest -cne $digest) { throw 'GitHub renamed or changed an uploaded asset; draft was not published.' }
-            $expectedUrl = 'https://github.com/' + $env:REPOSITORY + '/releases/download/' + $env:RELEASE_TAG + '/' + $name
-            if ($match[0].browser_download_url -cne $expectedUrl) { throw 'Uploaded asset URL differs from package metadata; draft was not published.' }
-          }
+          $releaseId = gh release view $env:RELEASE_TAG --json databaseId --jq .databaseId
+          if ($LASTEXITCODE -or $releaseId -notmatch '^\d+$') { throw 'Could not resolve draft release ID.' }
+          $remoteJson = gh api ('repos/' + $env:REPOSITORY + '/releases/' + $releaseId)
+          if ($LASTEXITCODE) { throw 'Uploaded draft could not be read back by ID.' }
+          ./tools/build/Assert-GitHubRelease.ps1 -ReleaseJson ($remoteJson -join "`n") -ReleaseDirectory artifacts/current -Repository $env:REPOSITORY -Tag $env:RELEASE_TAG -SourceCommit $env:RELEASE_COMMIT -Draft
           gh release edit $env:RELEASE_TAG --draft=false --latest
           if ($LASTEXITCODE) { throw 'Release publication failed.' }
+          $verified = $false
+          for ($attempt = 0; $attempt -lt 5; $attempt++) {
+            try {
+              $publicJson = gh api ('repos/' + $env:REPOSITORY + '/releases/' + $releaseId)
+              if ($LASTEXITCODE) { throw 'Published release could not be read back.' }
+              ./tools/build/Assert-GitHubRelease.ps1 -ReleaseJson ($publicJson -join "`n") -ReleaseDirectory artifacts/current -Repository $env:REPOSITORY -Tag $env:RELEASE_TAG -SourceCommit $env:RELEASE_COMMIT
+              $verified = $true
+              break
+            } catch {
+              if ($attempt -eq 4) { throw }
+              Start-Sleep -Seconds 2
+            }
+          }
+          if (-not $verified) { throw 'Public URL verification did not complete.' }
