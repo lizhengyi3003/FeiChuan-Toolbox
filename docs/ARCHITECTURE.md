@@ -74,7 +74,7 @@ Kumiryo 设置：用户预览 → 独立工作进程（可经 UAC）→ 发起 S
 | 用户功能范围 | README.md、docs/guides/使用说明.txt | 当前行为与限制；使用说明随包分发 |
 | 架构与构建 | 本文件、DEVELOPMENT.md | 文件职责、开发和打包入口 |
 | 验证结论 | VALIDATION.md、启动管理-能力与验证.md | 关联有日期的本机证据，区分历史和当前 |
-| 发布身份 | 包内 release.json、files.sha256，包旁 release-版本.json | 关联提交、版本及安装/便携包校验值 |
+| 发布身份 | 包内 release.json / files.sha256，Release 附件 release.json / SHA256SUMS.txt / SBOM 与对应 Git 标签 | 关联提交、版本及安装/便携包校验值 |
 
 主窗口各页面仍使用 WinUI 3 控件，由按功能拆分的 partial 文件构建；没有宣称已迁移为 MVVM。WindowsScanner 的统一编排与各来源实现已分别存放，尚未引入插件动态装载。后续扩展继续遵守现有协议、权限和数据边界。
 
