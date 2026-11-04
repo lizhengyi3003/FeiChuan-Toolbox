@@ -69,7 +69,9 @@ jobs:
       - name: Generate SBOM and package manager manifests
         run: ./tools/build/New-PackageMetadata.ps1 -ReleaseDirectory artifacts/current
       - name: Verify final distribution
-        run: ./tools/test/Test-Release.ps1
+        run: |
+          ./tools/test/Test-Release.ps1
+          ./tools/test/Test-PackageMetadata.ps1 -ReleaseDirectory artifacts/current
       - name: Attest public packages
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:

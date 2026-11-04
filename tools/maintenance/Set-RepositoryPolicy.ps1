@@ -19,6 +19,10 @@ function Invoke-Policy([string]$method, [string]$path, $body = $null) {
 try {
     $null = Invoke-Policy PATCH '' $policy.settings
     foreach ($request in $policy.requests) { $null = Invoke-Policy $request.method $request.path $request.body }
+    $labels = @(Invoke-Policy GET '/labels?per_page=100')
+    foreach ($label in $policy.labels) {
+        if (-not @($labels | Where-Object { $_.name -eq $label.name }).Count) { $null = Invoke-Policy POST '/labels' $label }
+    }
     $environmentRules = @(Invoke-Policy GET '/environments/release/deployment-branch-policies')
     if (-not @($environmentRules.branch_policies | Where-Object { $_.name -eq 'v*' -and $_.type -eq 'tag' }).Count) { $null = Invoke-Policy POST '/environments/release/deployment-branch-policies' @{ name = 'v*'; type = 'tag' } }
     $existing = @(Invoke-Policy GET '/rulesets')
