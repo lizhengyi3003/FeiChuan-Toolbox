@@ -20,7 +20,17 @@ Kumiryo 原失败操作发生在退出阶段，尚未写入；原 DPAPI 备份�
 
 稳定 SDK 的干净源码本地分发再次通过 732 个清单文件/733 个便携文件检查，并在断网、无 dotnet/Codex 的 Windows Sandbox 26100 上完成实际采集和 WinUI 截图。新增包管理清单、SBOM 和 9 个公开附件的白名单/哈希检查通过；三种清单均通过官方 Schema 校验。
 
-标签工作流会从同一提交重新构建安装器和便携包，并在当前源码的 CI required 成功后才生成公开 Release。SBOM、WinGet/Scoop、SHA-256、来源和 SBOM 证明与对应版本一起发布。本机分发验收不冒充云端最终产物的运行验收。
+标签工作流会从同一提交重新构建安装器和便携包，并在当前源码的 CI required 成功后才生成公开 Release。SBOM、WinGet/Scoop、SHA-256、来源和 SBOM 证明与对应版本一起发布。
+
+## 公开发布验收（v1.5.8）
+
+[标签工作流 41852477898](https://github.com/lizhengyi3003/FeiChuan-Toolbox/actions/runs/41852477898) 从提交 `15ec19a` 完成构建、证明和发布；公开 Release 为不可变版本，含 9 个 ASCII 附件。工作流先按 Release ID 读回草稿的名称、数量和内容摘要，公开后再回读正式标签地址，两步校验均通过。
+
+下载端独立复验：GitHub 记录的附件摘要与下载文件一致；安装器、便携包和校验清单的来源证明，以及安装器与便携包的 SBOM 证明，均通过 `gh attestation verify`（限定标签、来源提交、签发工作流，并禁止自托管 runner）。`Test-Release` 复验 732 个清单文件与 733 个便携文件、版本 1.5.8 且无私人数据；`Test-PackageMetadata` 复验 9 个 ASCII 白名单附件与 `SHA256SUMS.txt`；CycloneDX、WinGet 和 Scoop 清单通过各自官方 Schema。
+
+下载包在断网、无 dotnet/Codex 的 Windows Sandbox（构建 26100）中实际运行：便携包复制到带空格目录后完成 982 条隔离采集、真实 XAML 截图并正常退出；安装包静默安装到自定义含空格路径，退出码 0，732 个文件校验通过，启动后渲染真实 XAML，卸载移除自身登录入口和程序并保留历史数据。
+
+首次公开包沙盒验收曾经失败：从沙盒映射目录直接启动安装器时，Inno Setup 无法创建自己的解压临时目录（错误 5，退出码 1，未生成日志）。同一安装包复制到本地磁盘后全部检查通过。测试脚本改为先复制到本地媒体并检查安装退出码（[PR 7](https://github.com/lizhengyi3003/FeiChuan-Toolbox/pull/7)）；这不是包内容缺陷，但首次失败按实际情况保留记录。1.5.7 的草稿未公开，标签保留，不作为已交付版本。
 
 ## 仍有的边界
 
