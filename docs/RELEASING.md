@@ -9,12 +9,14 @@
 ## 正式发布
 
 1. 用 PR 合入版本、源码、说明和锁文件；等待 `CI required` 通过，并完成与改动相关的 Sandbox/人工运行验收。
-2. 在 main 已包含的提交创建注解标签 `vX.Y.Z` 并推送。标签必须与 Directory.Build.props 一致，不重用已公开版本。
+2. 在 main 已包含的提交创建注解标签 `vX.Y.Z` 并推送。标签必须与 Directory.Build.props 一致，不重用已公开版本。由仓库所有者按 [发布审批清单](GITHUB-GOVERNANCE.md) 确认 release 环境后才进入发布 job；单维护者允许本人确认，不代表双人审查。
 3. Release 工作流在 Windows 构建器中再次检查源码/历史、依赖和产品功能，验证官方签名的 Inno Setup 编译器，构建完整安装/便携包并逐文件校验。
 4. 为产品依赖生成 CycloneDX 1.6 SBOM、WinGet/Scoop 清单、版本来源元数据与 SHA256SUMS。SBOM 包含解析到的构建依赖，不能将其每一项都解释成实际加载的运行 DLL；具体交付文件看 files.sha256 与第三方 Notices。
 5. 附件名称使用 Directory.Build.props 的 ASCII DistributionPrefix。通过 GitHub OIDC 生成来源和 SBOM 证明，上传后按 Release ID 核对草稿的名称、数量与 SHA-256，再公开并回读正式标签 URL。草稿的临时 untagged URL 不能当作正式链接。只允许重试相同提交的草稿；公开附件不覆盖，修正必须发新版本。管理员启用 immutable releases 后，还由 GitHub 锁定公开附件和标签。
 
 工作流使用短期 GITHUB_TOKEN，普通 CI 默认 contents:read，只有发布 job 获得发布和 OIDC 权限。分发不需要开发者 PAT、API 密钥或代码签名私钥。Actions 以完整提交 SHA 固定，并由 Dependabot 提供更新 PR。
+
+发布说明由 `tools/build/New-ReleaseNotes.ps1` 提取 CHANGELOG 的对应版本，缺失或重复时停止。`.github/release.yml` 为 GitHub 自动生成变更记录提供分类；正式流水线以已审查的 CHANGELOG 为准。
 
 ## 下载验证
 

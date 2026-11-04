@@ -1,0 +1,14 @@
+changelog:
+  exclude:
+    labels: [duplicate, invalid, wontfix]
+  categories:
+    - title: 安全
+      labels: [security]
+    - title: 修复
+      labels: [bug]
+    - title: 功能与改进
+      labels: [enhancement, accessibility]
+    - title: 文档
+      labels: [documentation]
+    - title: 其他变更
+      labels: ['*']

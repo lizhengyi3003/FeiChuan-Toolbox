@@ -72,6 +72,8 @@ artifacts/    本地构建、日志与备份，全部忽略，不上传源码仓
 
 参与开发请读 [贡献规范](CONTRIBUTING.md)、[架构](docs/ARCHITECTURE.md)、[开发说明](docs/DEVELOPMENT.md) 和 [文档导航](docs/README.md)。[Wiki](https://github.com/lizhengyi3003/FeiChuan-Toolbox/wiki) 的版本化源文件位于 [docs/wiki](docs/wiki/Home.md)。
 
+平台开关、发布审批及单维护者边界见 [GitHub 维护规范](docs/GITHUB-GOVERNANCE.md)。
+
 ## 许可证
 
 项目自有源码使用 [GNU GPL v3.0 only](LICENSE)。第三方依赖、微软运行时和开发工具保留各自许可，见 [第三方声明](docs/THIRD-PARTY-NOTICES.md)。分发衍生作品时请遵守对应许可证及源码提供要求。

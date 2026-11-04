@@ -21,7 +21,11 @@ try {
     foreach ($request in $policy.requests) { $null = Invoke-Policy $request.method $request.path $request.body }
     $labels = @(Invoke-Policy GET '/labels?per_page=100')
     foreach ($label in $policy.labels) {
-        if (-not @($labels | Where-Object { $_.name -eq $label.name }).Count) { $null = Invoke-Policy POST '/labels' $label }
+        $found = @($labels | Where-Object { $_.name -eq $label.name })
+        if (-not $found.Count) { $null = Invoke-Policy POST '/labels' $label }
+        elseif ($found[0].color -cne $label.color -or $found[0].description -cne $label.description) {
+            $null = Invoke-Policy PATCH ('/labels/' + [Uri]::EscapeDataString($label.name)) $label
+        }
     }
     $environmentRules = @(Invoke-Policy GET '/environments/release/deployment-branch-policies')
     if (-not @($environmentRules.branch_policies | Where-Object { $_.name -eq 'v*' -and $_.type -eq 'tag' }).Count) { $null = Invoke-Policy POST '/environments/release/deployment-branch-policies' @{ name = 'v*'; type = 'tag' } }

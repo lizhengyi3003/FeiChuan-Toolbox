@@ -7,3 +7,5 @@
 维护者可以编辑或移除违规内容、限制讨论或参与权限，并根据上下文处理申诉。报告涉及敏感信息时使用仓库的私密安全报告入口；普通争议可联系仓库所有者。处理时尽量保护报告者隐私，不承诺绝对保密或固定响应时限。
 
 本规范适用于仓库、Issues、PR、Wiki 和项目维护的其他讨论空间。
+
+非敏感社区问题可在 [Discussions](https://github.com/lizhengyi3003/FeiChuan-Toolbox/discussions) 联系 [仓库所有者](https://github.com/lizhengyi3003)。目前没有专用私密投诉邮箱；请勿公开私人证据。安全漏洞继续通过 SECURITY.md 中的私密入口报告。
