@@ -1,5 +1,9 @@
 {
   "repository": "lizhengyi3003/FeiChuan-Toolbox",
+  "labels": [
+    { "name": "needs-triage", "color": "ededed", "description": "New report awaiting maintainer review" },
+    { "name": "security", "color": "d73a4a", "description": "Security maintenance; report vulnerabilities privately" }
+  ],
   "settings": {
     "description": "Windows 11 WinUI 3 小工具箱：启动管理、兼容热点与 Kumiryo 配置迁移。GPL-3.0。",
     "has_issues": true,
@@ -37,7 +41,8 @@
         { "type": "non_fast_forward" },
         { "type": "required_linear_history" },
         { "type": "pull_request", "parameters": { "required_approving_review_count": 0, "dismiss_stale_reviews_on_push": true, "require_code_owner_review": false, "require_last_push_approval": false, "required_review_thread_resolution": true, "allowed_merge_methods": ["squash"] } },
-        { "type": "required_status_checks", "parameters": { "strict_required_status_checks_policy": true, "required_status_checks": [{ "context": "CI required", "integration_id": 15368 }] } }
+        { "type": "required_status_checks", "parameters": { "strict_required_status_checks_policy": true, "required_status_checks": [{ "context": "CI required", "integration_id": 15368 }] } },
+        { "type": "code_scanning", "parameters": { "code_scanning_tools": [{ "tool": "CodeQL", "alerts_threshold": "errors", "security_alerts_threshold": "high_or_higher" }] } }
       ]
     },
     {

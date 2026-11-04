@@ -27,15 +27,31 @@ foreach ($key in $libraries.Keys | Sort-Object) {
     $resolved = @($edges[$key] | ForEach-Object { $name = $_; $libraries.Keys | Where-Object { $_.Split('/')[0] -eq $name } } | Sort-Object -Unique | ForEach-Object { Purl $_ })
     $dependencies += @{ ref = (Purl $key); dependsOn = $resolved }
 }
+$frameworks = @{}
+foreach ($relative in @('app\TunHotspot.runtimeconfig.json', 'app\Engine\TunHotspot.Engine.runtimeconfig.json')) {
+    $config = Get-Content -LiteralPath (Join-Path $ReleaseDirectory $relative) -Raw | ConvertFrom-Json
+    foreach ($framework in $config.runtimeOptions.includedFrameworks) { $frameworks[$framework.name + '/' + $framework.version] = $framework }
+}
+foreach ($framework in $frameworks.Values) {
+    $ref = 'runtime:' + $framework.name + '/' + $framework.version
+    $components += @{ type = 'framework'; 'bom-ref' = $ref; name = $framework.name; version = $framework.version; properties = @(@{ name = 'feichuan:inventory'; value = 'shipped-self-contained-runtime' }) }
+    $dependencies += @{ ref = $ref; dependsOn = @() }
+}
+foreach ($crt in Get-ChildItem -LiteralPath (Join-Path $ReleaseDirectory 'app') -File | Where-Object { $_.Name -match '^(vcruntime|msvcp|concrt).*\.dll$' }) {
+    $ref = 'file:' + $crt.Name
+    $components += @{ type = 'file'; 'bom-ref' = $ref; name = $crt.Name; version = [Diagnostics.FileVersionInfo]::GetVersionInfo($crt.FullName).FileVersion; hashes = @(@{ alg = 'SHA-256'; content = (Get-FileHash -LiteralPath $crt.FullName).Hash.ToLowerInvariant() }); properties = @(@{ name = 'feichuan:inventory'; value = 'shipped-microsoft-crt' }) }
+    $dependencies += @{ ref = $ref; dependsOn = @() }
+}
+$dependencies += @{ ref = 'FeiChuan-Toolbox'; dependsOn = @($components | ForEach-Object { $_['bom-ref'] }) }
 $sbom = [ordered]@{ bomFormat = 'CycloneDX'; specVersion = '1.6'; serialNumber = 'urn:uuid:' + [Guid]::NewGuid(); version = 1
-    metadata = @{ timestamp = [DateTimeOffset]::UtcNow.ToString('o'); component = @{ type = 'application'; name = 'FeiChuan-Toolbox'; version = $version; licenses = @(@{ expression = 'GPL-3.0-only' }); properties = @(@{ name = 'feichuan:source-commit'; value = $sourceCommit }) } }
+    metadata = @{ timestamp = [DateTimeOffset]::UtcNow.ToString('o'); component = @{ type = 'application'; 'bom-ref' = 'FeiChuan-Toolbox'; name = 'FeiChuan-Toolbox'; version = $version; licenses = @(@{ expression = 'GPL-3.0-only' }); properties = @(@{ name = 'feichuan:source-commit'; value = $sourceCommit }) } }
     components = $components; dependencies = $dependencies }
 $sbom | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath (Join-Path $packages 'sbom.cdx.json') -Encoding utf8
 $base = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox/releases/download/v' + $version + '/'
 $installerUrl = $base + [Uri]::EscapeDataString([IO.Path]::GetFileName($release.installer.file))
 $zipUrl = $base + [Uri]::EscapeDataString([IO.Path]::GetFileName($release.portable.file))
 $scoop = [ordered]@{ version = $version; description = 'Windows 11 WinUI 3 toolbox for startup management, hotspot and Kumiryo configuration'; homepage = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox'; license = 'GPL-3.0-only'
-    architecture = @{ '64bit' = @{ url = $zipUrl; hash = $release.portable.sha256 } }; shortcuts = @(@('TunHotspot.exe', '飞船的小工具箱')); checkver = @{ github = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox' }
+    architecture = @{ '64bit' = @{ url = $zipUrl; hash = $release.portable.sha256 } }; shortcuts = (, @('TunHotspot.exe', '飞船的小工具箱')); checkver = @{ github = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox' }
     autoupdate = @{ architecture = @{ '64bit' = @{ url = 'https://github.com/lizhengyi3003/FeiChuan-Toolbox/releases/download/v$version/飞船的小工具箱-$version-win11-x64.zip' } } } }
 $scoop | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $packages 'feichuan-toolbox.scoop.json') -Encoding utf8
 $winget = @"
@@ -64,4 +80,4 @@ ManifestVersion: 1.10.0
 $winget | Set-Content -LiteralPath (Join-Path $packages 'lizhengyi3003.FeiChuanToolbox.yaml') -Encoding utf8
 Copy-Item -LiteralPath (Join-Path $ReleaseDirectory 'release.json') -Destination (Join-Path $packages 'release.json')
 Get-ChildItem -LiteralPath $packages -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name | ForEach-Object { (Get-FileHash -LiteralPath $_.FullName).Hash.ToLowerInvariant() + '  ' + $_.Name } | Set-Content -LiteralPath (Join-Path $packages 'SHA256SUMS.txt') -Encoding utf8
-Write-Output ('Package inventory: ' + $components.Count + ' resolved dependencies; manifests and SHA256SUMS created.')
+Write-Output ('Package inventory: ' + $components.Count + ' components; manifests and SHA256SUMS created.')

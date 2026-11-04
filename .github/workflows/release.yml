@@ -23,6 +23,7 @@ jobs:
     environment: release
     permissions:
       contents: write
+      checks: read
       id-token: write
       attestations: write
     steps:
@@ -47,6 +48,18 @@ jobs:
           ./tools/security/Test-Workflows.ps1
           ./tools/security/Test-Secrets.ps1 -History
           ./tools/security/Test-Dependencies.ps1
+      - name: Require successful CI for this exact source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $response = gh api ('repos/' + $env:REPOSITORY + '/commits/' + $env:RELEASE_COMMIT + '/check-runs?per_page=100')
+          if ($LASTEXITCODE) { throw 'Cannot verify source CI checks.' }
+          $checks = @((($response -join "`n") | ConvertFrom-Json).check_runs | Where-Object { $_.name -eq 'CI required' -and $_.app.id -eq 15368 } | Sort-Object started_at -Descending)
+          if (-not $checks.Count -or $checks[0].status -ne 'completed' -or $checks[0].conclusion -ne 'success') {
+            throw 'CI required must succeed for this commit before publication. Rerun after CI finishes.'
+          }
       - name: Product checks
         run: ./test.ps1
       - name: Prepare signed official Inno Setup compiler
@@ -56,7 +69,9 @@ jobs:
       - name: Generate SBOM and package manager manifests
         run: ./tools/build/New-PackageMetadata.ps1 -ReleaseDirectory artifacts/current
       - name: Verify final distribution
-        run: ./tools/test/Test-Release.ps1
+        run: |
+          ./tools/test/Test-Release.ps1
+          ./tools/test/Test-PackageMetadata.ps1 -ReleaseDirectory artifacts/current
       - name: Attest public packages
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
