@@ -50,8 +50,9 @@ $packages = Join-Path $stage 'packages'
 $runtime = Get-Content -LiteralPath (Join-Path $publish 'release.json') -Raw | ConvertFrom-Json
 if ($runtime.version -ne $version) { throw '发布元数据版本不一致。' }
 & (Join-Path $root 'tools\build\Build-Installer.ps1') -PublishDirectory $publish -OutputDirectory $packages -CompilerPath $CompilerPath
-$zipName = "飞船的小工具箱-$version-win11-x64.zip"
-$setupName = "飞船的小工具箱-$version-Setup-x64.exe"
+$names = Get-DistributionNames -RepositoryRoot $root -Version $version
+$zipName = $names.Portable
+$setupName = $names.Installer
 $zip = Join-Path $packages $zipName
 $setup = Join-Path $packages $setupName
 [IO.Compression.ZipFile]::CreateFromDirectory($publish, $zip, [IO.Compression.CompressionLevel]::Optimal, $false)

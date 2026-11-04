@@ -12,7 +12,7 @@
 2. 在 main 已包含的提交创建注解标签 `vX.Y.Z` 并推送。标签必须与 Directory.Build.props 一致，不重用已公开版本。
 3. Release 工作流在 Windows 构建器中再次检查源码/历史、依赖和产品功能，验证官方签名的 Inno Setup 编译器，构建完整安装/便携包并逐文件校验。
 4. 为产品依赖生成 CycloneDX 1.6 SBOM、WinGet/Scoop 清单、版本来源元数据与 SHA256SUMS。SBOM 包含解析到的构建依赖，不能将其每一项都解释成实际加载的运行 DLL；具体交付文件看 files.sha256 与第三方 Notices。
-5. 通过 GitHub OIDC 生成来源和 SBOM 证明，全部附件上传到草稿后才公开。只允许重试相同提交的草稿；公开版本不覆盖，修正必须发新版本。管理员启用 immutable releases 后，还由 GitHub 锁定公开附件和标签。
+5. 附件名称使用 Directory.Build.props 的 ASCII DistributionPrefix。通过 GitHub OIDC 生成来源和 SBOM 证明，上传后回读草稿中全部附件的名称、数量、SHA-256 和实际下载 URL，完全一致才公开。只允许重试相同提交的草稿；公开附件不覆盖，修正必须发新版本。管理员启用 immutable releases 后，还由 GitHub 锁定公开附件和标签。
 
 工作流使用短期 GITHUB_TOKEN，普通 CI 默认 contents:read，只有发布 job 获得发布和 OIDC 权限。分发不需要开发者 PAT、API 密钥或代码签名私钥。Actions 以完整提交 SHA 固定，并由 Dependabot 提供更新 PR。
 

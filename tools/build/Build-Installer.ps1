@@ -16,6 +16,7 @@ foreach($file in @('TunHotspot.exe','TunHotspot.pri','Assets\TunHotspot.ico','En
 }
 [xml]$project=Get-Content -LiteralPath "$root\Directory.Build.props"
 $version=[string]$project.Project.PropertyGroup.Version
+$names=Get-DistributionNames -RepositoryRoot $root -Version $version
 foreach($binary in @('TunHotspot.exe','TunHotspot.Core.dll','Engine\TunHotspot.Engine.exe','Engine\TunHotspot.Core.dll')){
     $actual=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $PublishDirectory $binary)).ProductVersion.Split('+')[0]
     if($actual -ne $version){throw "发布目录版本不一致：$binary 为 $actual，预期 $version。"}
@@ -26,9 +27,9 @@ $coordinatorFile=Join-Path $root 'installer\Upgrade-Coordinator.ps1'
 $coordinatorBytes=[IO.File]::ReadAllBytes($coordinatorFile)
 if($coordinatorBytes.Length -lt 3 -or $coordinatorBytes[0] -ne 239 -or $coordinatorBytes[1] -ne 187 -or $coordinatorBytes[2] -ne 191){throw '升级协调器必须为 UTF-8 BOM，以兼容内置 Windows PowerShell 5.1。'}
 $coordinatorHash=(Get-FileHash -LiteralPath $coordinatorFile).Hash.ToLowerInvariant()
-& $CompilerPath '/Q' "--output-dir=$OutputDirectory" "/DAppVersion=$version" "/DPublishDir=$PublishDirectory" "/DCoordinatorSha256=$coordinatorHash" "$root\installer\TunHotspot.iss"
+& $CompilerPath '/Q' "--output-dir=$OutputDirectory" "/DAppVersion=$version" "/DDistributionPrefix=$($names.Prefix)" "/DPublishDir=$PublishDirectory" "/DCoordinatorSha256=$coordinatorHash" "$root\installer\TunHotspot.iss"
 if($LASTEXITCODE){throw '安装包编译失败。'}
-$setup=Join-Path $OutputDirectory "飞船的小工具箱-$version-Setup-x64.exe"
+$setup=Join-Path $OutputDirectory $names.Installer
 $hash=Get-FileHash -LiteralPath $setup -Algorithm SHA256
 "$($hash.Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($setup))" | Set-Content -LiteralPath "$setup.sha256" -Encoding utf8
 Write-Output "安装包：$setup"
