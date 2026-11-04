@@ -90,13 +90,7 @@ jobs:
           RELEASE_COMMIT: ${{ github.sha }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          $notes = @'
-          Windows 11 x64. The installer and portable ZIP contain the application runtimes.
-          Verify SHA256SUMS.txt and GitHub artifact attestations before use.
-          Binaries are currently not Authenticode signed.
-          The tag contains the GPL-3.0 source and third-party notices.
-          Package-manager manifests are provided for review; no community-store listing is implied.
-          '@
+          $notes = ./tools/build/New-ReleaseNotes.ps1 -Version $env:RELEASE_TAG.Substring(1)
           $file = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           $notes | Set-Content -LiteralPath $file -Encoding utf8
           $existingJson = gh release view $env:RELEASE_TAG --json isDraft,targetCommitish 2>$null

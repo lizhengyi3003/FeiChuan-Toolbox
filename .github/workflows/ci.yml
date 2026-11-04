@@ -30,6 +30,8 @@ jobs:
         run: ./tools/test/Test-Repository.ps1
       - name: Workflow validation
         run: ./tools/security/Test-Workflows.ps1
+      - name: Release note regression checks
+        run: ./tools/test/Test-ReleaseNotes.ps1
       - name: Draft and public release regression checks
         run: ./tools/test/Test-GitHubReleaseValidation.ps1
   windows:

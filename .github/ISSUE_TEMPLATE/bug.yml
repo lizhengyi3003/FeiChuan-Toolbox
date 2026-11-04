@@ -9,7 +9,7 @@ body:
     id: version
     attributes:
       label: 工具箱版本 / Windows 版本
-      placeholder: 例如 1.5.6 / Windows 11 26100
+      placeholder: 填写实际工具箱版本和 Windows 系统构建号
     validations:
       required: true
   - type: dropdown
