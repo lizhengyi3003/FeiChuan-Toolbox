@@ -71,25 +71,25 @@ try
        <Data Name="ErrorCode">1168</Data><Data Name="ReasonCode">0x42</Data></EventData>
      </Event>
      """) == " · ErrorCode=1168 · ReasonCode=66", "WLAN 诊断只提取已知数值代码，不记录网络名和设备标识");
- var store=new ToolboxStore(root);
+ var alertStore=new ToolboxStore(Path.Combine(root, "alert-sync"));
  var localAlert = new AlertEvent { Title = "机器告警", IsRead = true, Delivery = "已发送" };
- store.SaveAlert(localAlert);
+ alertStore.SaveAlert(localAlert);
  AlertEvent RemoteAlert() => new()
  {
      Id = localAlert.Id, Title = localAlert.Title, FirstSeen = localAlert.FirstSeen, LastSeen = localAlert.LastSeen
  };
  using (var writer = new Microsoft.Data.Sqlite.SqliteConnection(
-     new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "toolbox.db"), Pooling = false }.ToString()))
+     new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path.Combine(alertStore.Root, "toolbox.db"), Pooling = false }.ToString()))
  {
      writer.Open();
      using var transaction = writer.BeginTransaction();
-     store.MergeRemoteAlerts([RemoteAlert()]);
+     alertStore.MergeRemoteAlerts([RemoteAlert()]);
      Check(true, "重复同步相同机器告警时，即使已有写事务也只读取");
  }
  var updatedAlert = RemoteAlert();
  updatedAlert.Count++;
- store.MergeRemoteAlerts([updatedAlert]);
- Check(store.Alerts.Single(x => x.Id == localAlert.Id) is { Count: 2, IsRead: true, Delivery: "已发送" },
+ alertStore.MergeRemoteAlerts([updatedAlert]);
+ Check(alertStore.Alerts.Single(x => x.Id == localAlert.Id) is { Count: 2, IsRead: true, Delivery: "已发送" },
      "机器告警更新后保留本地已读状态和投递结果");
  using(var worker=new HotspotWorkerClient(Environment.ProcessPath!,root))
  {
@@ -107,6 +107,7 @@ try
      try { await pending; throw new Exception("pending request survived shutdown"); }
      catch (OperationCanceledException) { Check(child.HasExited, "退出取消等待中的热点请求并释放已退出的子进程"); }
  }
+ var store=new ToolboxStore(root);
  using (var monitor = new LiveMonitor(store, Contract.Sid))
  {
      await monitor.StopAsync();
