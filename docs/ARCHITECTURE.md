@@ -1,6 +1,6 @@
 # 架构与文件职责
 
-当前产品版本 1.5.8；当前产物布局以 Artifacts.ps1 和 PROJECT-STRUCTURE.md 为准，历史构建不参与编译或分发。
+当前产品版本 1.5.9；当前产物布局以 Artifacts.ps1 和 PROJECT-STRUCTURE.md 为准，历史构建不参与编译或分发。
 
 三个产品工程与功能检查的编译依赖为 WinUI → Core、Engine → Core、Tests → Core；隔离集成夹具也依赖 Core，模拟客户端独立编译。Core 不引用 WinUI 或 Engine；它使用 Windows 注册表、SCM、WMI 等接口，并非跨平台库。
 

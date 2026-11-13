@@ -81,12 +81,17 @@ public sealed partial class ToolboxWindow : Window
         if (_startupUnavailable)
         {
             VersionLabel.Text = Contract.ProductVersion + " · 启动数据待修复";
+            var details = Text(_startupError, 12);
+            details.IsTextSelectionEnabled = true;
+            var openLogs = Button("打开诊断目录", () => Process.Start(new ProcessStartInfo(
+                Path.GetDirectoryName(_startupDiagnosticPath) ?? _diagnostics.Folder) { UseShellExecute = true }));
+            openLogs.IsEnabled = Directory.Exists(Path.GetDirectoryName(_startupDiagnosticPath) ?? _diagnostics.Folder);
             PageHost.Content = Scroll(Column(Text("启动管理数据暂时不可用", 26, true),
                 Text("原数据库已保留，没有重置历史或把空数据当作扫描结果。当前界面的启动管理读取、写入与监测已暂停；后台机器组件独立运行。热点及 Kumiryo 一键配置仍可使用。"),
-                Text(_startupError, 12),
+                details,
                 Row(Button("打开 Kumiryo 一键配置", () => Navigate("configuration")), Button("打开兼容热点", () => Navigate("hotspot")),
                     Button("重新核验数据库", () => { if(Application.Current is App app)app.RetryMainWindow(); }),
-                    Button("打开诊断目录", () => Process.Start(new ProcessStartInfo(AppLog.Folder) { UseShellExecute = true })),
+                    openLogs,
                     Button("查看原数据目录", () => Process.Start(new ProcessStartInfo(DataPaths.UserRoot) { UseShellExecute = true })))));
             return;
         }

@@ -4,7 +4,14 @@ Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 $result=[ordered]@{Success=$false;Time=(Get-Date).ToString('o')}
 $app=$null
+$qaTemp=Join-Path ([IO.Path]::GetTempPath()) ('TunHotspot-RecoveryUi-'+[guid]::NewGuid().ToString('N'))
+$previousTemp=$env:TEMP
+$previousTmp=$env:TMP
 try{
+    New-Item -ItemType Directory -Path $qaTemp | Out-Null
+    # Block the old scratch database path while leaving isolated settings writable.
+    New-Item -ItemType File -Path (Join-Path $qaTemp 'TunHotspot-Unavailable') | Out-Null
+    $env:TEMP=$env:TMP=$qaTemp
     $app=Start-Process -FilePath $ApplicationPath -ArgumentList '--qa-capture','recovery-interactive' -PassThru
     $deadline=(Get-Date).AddSeconds(10);$root=$null
     do{Start-Sleep -Milliseconds 100;$app.Refresh();if($app.MainWindowHandle -ne [IntPtr]::Zero){$root=[Windows.Automation.AutomationElement]::FromHandle($app.MainWindowHandle)}}while(-not $root -and (Get-Date) -lt $deadline)
@@ -36,9 +43,13 @@ try{
     $fake=Join-Path ([IO.Path]::GetTempPath()) ('TunHotspot-QA\'+$app.Id+'\toolbox.db')
     if((Get-Content -LiteralPath $fake -Raw) -ne 'TunHotspot isolated corruption fixture'){throw 'Damaged original fixture was replaced.'}
     if(-not $app.WaitForExit(35000)){throw 'Recovery UI QA timeout.'}
-    $result.Success=$true;$result.Pid=$app.Id;$result.OriginalPreserved=$true;$result.ConfigurationIndependent=$true;$result.HotspotNavigation=$true;$result.GlobalSettingsFromAllWorkspaces=$true;$result.SettingsSavedWithBrokenDatabase=$true
+    $result.Success=$true;$result.Pid=$app.Id;$result.OriginalPreserved=$true;$result.ConfigurationIndependent=$true;$result.HotspotNavigation=$true;$result.GlobalSettingsFromAllWorkspaces=$true;$result.SettingsSavedWithBrokenDatabase=$true;$result.ScratchPathBlocked=$true
 }catch{$result.Error=$_.Exception.Message}
-finally{if($app -and -not $app.HasExited){Stop-Process -Id $app.Id -Force}}
+finally{
+    $env:TEMP=$previousTemp
+    $env:TMP=$previousTmp
+    if($app -and -not $app.HasExited){Stop-Process -Id $app.Id -Force}
+}
 $result | ConvertTo-Json | Set-Content -LiteralPath $OutputPath -Encoding UTF8
 $result | ConvertTo-Json
 if(-not $result.Success){exit 1}

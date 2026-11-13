@@ -23,17 +23,22 @@ namespace TunHotspot;
 
 public sealed partial class ToolboxWindow : Window
 {
-    private readonly ToolboxStore _store;
+    private readonly ToolboxStore? _startupStore;
+    private ToolboxStore _store => _startupStore ?? throw new InvalidOperationException("启动数据库暂不可用。");
     private readonly PreferencesStore _preferences;
     private readonly DiagnosticLog _diagnostics;
     private readonly DispatcherTimer _poll = new() { Interval = TimeSpan.FromSeconds(5) };
-    private readonly LiveMonitor _monitor;
+    private readonly LiveMonitor? _startupMonitor;
+    private LiveMonitor _monitor => _startupMonitor ?? throw new InvalidOperationException("启动监测暂不可用。");
+    private readonly CancellationTokenSource _windowStop = new();
+    private Task _startupBackup = Task.CompletedTask;
     private readonly HotspotPage _hotspot;
     private readonly ScrollViewer _hotspotHost;
     private ConfigurationPage? _configuration;
     private readonly bool _qa;
     private bool _startupUnavailable;
     private string _startupError = "";
+    private string? _startupDiagnosticPath;
     private bool _qaPageErrorInjected;
     private readonly UISettings _uiSettings = new();
     private readonly AccessibilitySettings _accessibility = new();
@@ -54,7 +59,8 @@ public sealed partial class ToolboxWindow : Window
     private DateTimeOffset _lastAnalysis;
     private DateTimeOffset _lastControlTime;
     private List<string> _fonts = [];
-    private static readonly DataTemplate Rows = (DataTemplate)XamlReader.Load("""
+    private DataTemplate? _rows;
+    private DataTemplate Rows => _rows ??= (DataTemplate)XamlReader.Load("""
         <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
           <StackPanel Padding="4,8" Spacing="4">
             <TextBlock Text="{Binding Display}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
@@ -63,42 +69,75 @@ public sealed partial class ToolboxWindow : Window
         </DataTemplate>
         """);
 
-    public ToolboxWindow(bool quiet = false, bool qa = false)
+    private OverviewData? _overviewData;
+    internal sealed record StartupData(PreferencesStore Preferences, DiagnosticLog Diagnostics, ToolboxStore? Store,
+        UserSettings Settings, ScanSnapshot? Snapshot, OverviewData? Overview, DateTimeOffset LastControlTime, string Error, string? DiagnosticPath);
+
+    internal static StartupData LoadStartupData(bool qa)
     {
-        string qaRoot = Path.Combine(Path.GetTempPath(), "TunHotspot-QA", Environment.ProcessId.ToString());
-        _preferences = new(qa ? qaRoot : DataPaths.UserRoot);
-        _diagnostics = new(qa ? qaRoot : DataPaths.UserRoot);
-        var savedPreferences = _preferences.Load();
+        string root = qa ? AppLog.DataRoot : DataPaths.UserRoot;
+        var preferences = new PreferencesStore(root);
+        var diagnostics = new DiagnosticLog(root);
+        long started = Stopwatch.GetTimestamp();
+        var savedPreferences = preferences.Load();
         bool recoveryQa = qa && Environment.GetCommandLineArgs().Contains("recovery-interactive");
-        if (recoveryQa && !File.Exists(Path.Combine(qaRoot,"toolbox.db"))) { Directory.CreateDirectory(qaRoot); File.WriteAllText(Path.Combine(qaRoot, "toolbox.db"), "TunHotspot isolated corruption fixture"); }
+        if (recoveryQa && !File.Exists(Path.Combine(root,"toolbox.db"))) { Directory.CreateDirectory(root); File.WriteAllText(Path.Combine(root, "toolbox.db"), "TunHotspot isolated corruption fixture"); }
         try
         {
-            if(!qa){UserDataMigration.Ensure();savedPreferences=_preferences.Load();}
-            _store = new(qa ? qaRoot : DataPaths.UserRoot, verifyIntegrity: true);
-            _settings = savedPreferences ?? _store.Settings; _snapshot = _store.Latest;
-            _store.ReconcilePending(_snapshot);
-            _lastControlTime=_store.Get<DateTimeOffset>("lastControlTime");
-            AttachDecisions();
-            if(!qa)_=Task.Run(()=>{try{string folder=Path.Combine(_store.Root,"database-backups");if(!Directory.Exists(folder)||!Directory.EnumerateFiles(folder,"toolbox-*.db").Any(x=>File.GetLastWriteTimeUtc(x)>DateTime.UtcNow.AddHours(-6)))_store.CreateVerifiedBackup();}catch(Exception ex){_diagnostics.Record("启动后数据库备份",ex);}});
+            if (!qa)
+            {
+                UserDataMigration.Ensure();
+                savedPreferences ??= preferences.Load();
+            }
+            double migrationMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            long opening = Stopwatch.GetTimestamp();
+            var store = new ToolboxStore(root, verifyIntegrity: true);
+            double databaseMs = Stopwatch.GetElapsedTime(opening).TotalMilliseconds;
+            long reading = Stopwatch.GetTimestamp();
+            var settings = savedPreferences ?? store.Settings;
+            var snapshot = store.Latest;
+            if (snapshot is not null)
+            {
+                AttachDecisions(store, snapshot);
+            }
+            var overview = snapshot is null ? null : OverviewData.Read(store);
+            var lastControl = store.Get<DateTimeOffset>("lastControlTime");
+            AppLog.Write("startup-data-timing", new { migrationMs, databaseMs, readingMs = Stopwatch.GetElapsedTime(reading).TotalMilliseconds });
+            return new(preferences, diagnostics, store, settings, snapshot, overview, lastControl, "", null);
         }
         catch (Exception ex) when ((!qa || recoveryQa) && (ex is Microsoft.Data.Sqlite.SqliteException or InvalidDataException or System.Text.Json.JsonException or IOException or UnauthorizedAccessException))
         {
-            _startupUnavailable = true; _startupError = KumiryoConfiguration.SafeError(ex);
-            var incident = _diagnostics.Record("加载启动数据库",ex,true);
-            _startupError += $"\n错误编号：{incident.Id}；日志：{incident.LogPath}";
-            // This isolated scratch store is never presented as a fresh startup baseline.
-            // The original database is neither replaced nor reset, and no monitor is started.
-            _store = new(Path.Combine(Path.GetTempPath(), "TunHotspot-Unavailable", Guid.NewGuid().ToString("N")));
-            _settings = savedPreferences ?? new(); _snapshot = null;
+            var incident = diagnostics.Record("加载启动数据库",ex,true);
+            string? path = string.IsNullOrEmpty(incident.LogPath) ? null : incident.LogPath;
+            string error = $"{incident.Guidance}\n{DiagnosticLog.Clean(ex.Message)}\n错误编号：{incident.Id}；{incident.Code}";
+            error += path is null ? $"\n{incident.StorageWarning}" : $"\n日志：{path}";
             AppLog.Write("startup-data-unavailable", new { qa, type = ex.GetType().FullName, ex.HResult, Details = ex.ToString(), originalPreserved = true });
+            return new(preferences, diagnostics, null, savedPreferences ?? new(), null, null, default, error, path);
         }
+    }
+
+    internal ToolboxWindow(StartupData data, bool quiet, bool qa)
+    {
+        _preferences = data.Preferences;
+        _diagnostics = data.Diagnostics;
+        _startupStore = data.Store;
+        _startupUnavailable = data.Store is null;
+        _settings = data.Settings;
+        _snapshot = data.Snapshot;
+        _overviewData = data.Overview;
+        _lastControlTime = data.LastControlTime;
+        _startupError = data.Error;
+        _startupDiagnosticPath = data.DiagnosticPath;
         InitializeComponent(); _hotspot = new();
         _hotspotHost=new ScrollViewer{Content=_hotspot,HorizontalContentAlignment=HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Stretch,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};_qa=qa;
         VersionLabel.Text=Contract.ProductVersion+" · 启动管理";
         if(qa){_settings.Theme="浅色";_settings.Backdrop="None";}
-        _monitor = new(_store, Contract.Sid) { Paused = _startupUnavailable || _settings.Paused };
-        _monitor.Progress += p => DispatcherQueue.TryEnqueue(() => { if (!_adminBusy) ShowProgress(p); });
-        _monitor.SnapshotReady += snapshot => DispatcherQueue.TryEnqueue(() => { if (!_startupUnavailable && !_adminBusy && !_serviceConnected) ApplySnapshot(snapshot); });
+        if (_startupStore is not null)
+        {
+            _startupMonitor = new(_startupStore, Contract.Sid) { Paused = _settings.Paused };
+            _startupMonitor.Progress += p => DispatcherQueue.TryEnqueue(() => { if (!_adminBusy) ShowProgress(p); });
+            _startupMonitor.SnapshotReady += snapshot => DispatcherQueue.TryEnqueue(() => { if (!_startupUnavailable && !_adminBusy && !_serviceConnected) ApplySnapshot(snapshot); });
+        }
         ExtendsContentIntoTitleBar = true; SetTitleBar(TitleArea);
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory,"Assets","TunHotspot.ico"));
@@ -113,29 +152,18 @@ public sealed partial class ToolboxWindow : Window
         AppWindow.Changed+=(_,change)=>{if(!qa&&AppWindow.IsVisible&&(change.DidPositionChange||change.DidSizeChange)){_settings.WindowX=AppWindow.Position.X;_settings.WindowY=AppWindow.Position.Y;_settings.WindowWidth=AppWindow.Size.Width;_settings.WindowHeight=AppWindow.Size.Height;}};
         AppWindow.Closing += (_, e) =>
         {
-            if (!_exiting && _settings.CloseToTray && _tray is not null) { e.Cancel = true; AppWindow.Hide(); }
+            if (_allowClose) return;
+            e.Cancel = true;
+            if (!_exiting && _settings.CloseToTray && _tray is not null) AppWindow.Hide();
+            else DispatcherQueue.TryEnqueue(ExitToolbox);
         };
-        Closed += (_, _) => Cleanup();
-        try
-        {
-            if (qa) throw new OperationCanceledException("离屏 UI 验证不注册托盘。");
-            _tray = new(handle);
-            _tray.Command += HandleTrayCommand;
-            _tray.MenuRequested += (x,y)=>DispatcherQueue.TryEnqueue(()=>OpenTrayMenu(x,y));
-            _tray.SessionEnding += () => {_exiting = true;AppLog.Write("windows-session-ending",new{databaseMode="DELETE/FULL"});};
-            _tray.FontsChanged += () => _=LoadFonts();
-            _tray.Resumed += () => { if (!_startupUnavailable) { _monitor.Reconcile("登录界面或电源恢复");_=Poll(); } };
-        }
-        catch(Exception ex){if(!qa)Tell("托盘不可用",ex.Message,InfoBarSeverity.Warning);}
-        try { _uiSettings.AdvancedEffectsEnabledChanged += (_,_)=>DispatcherQueue.TryEnqueue(ApplyAppearance); } catch(Exception ex) { AppLog.Write("optional-theme-event",new{ex.Message}); }
-        try { _accessibility.HighContrastChanged += (_,_)=>DispatcherQueue.TryEnqueue(ApplyAppearance); } catch(Exception ex) { AppLog.Write("optional-accessibility-event",new{ex.Message}); }
+        try { _uiSettings.AdvancedEffectsEnabledChanged += AdvancedEffectsChanged; } catch(Exception ex) { AppLog.Write("optional-theme-event",new{ex.Message}); }
+        try { _accessibility.HighContrastChanged += HighContrastChanged; } catch(Exception ex) { AppLog.Write("optional-accessibility-event",new{ex.Message}); }
         ApplyAppearance(); _initialized = true; Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First();
         if (_preferences.Warning.Length > 0) Tell("应用设置恢复提示", _preferences.Warning, InfoBarSeverity.Warning);
         Navigation.ItemInvoked+=(_,args)=>{if(args.InvokedItemContainer is NavigationViewItem item&&item.Tag?.ToString() is string page){if(page=="entries"){_entryFilter.Clear();RenderPage();}else if(page=="pending"){_pendingFilter.Clear();RenderPage();}}};
-        _poll.Tick += async (_,_)=>await Poll(); if(!qa&&!_startupUnavailable){_poll.Start();_monitor.Start();_=Poll();}
-        _=LoadFonts();
+        _poll.Tick += async (_,_)=>await Poll();
         if(quiet)DispatcherQueue.TryEnqueue(()=>AppWindow.Hide());
-        AppLog.Write("toolbox-opened",new {networkChanged=false,quiet,startupAvailable=!_startupUnavailable});
     }
     internal void Show(){AppWindow.Show();Activate();}
     internal void ReportError(string message)=>Tell("操作未完成",message,InfoBarSeverity.Error);
@@ -145,5 +173,4 @@ public sealed partial class ToolboxWindow : Window
         Tell(operation+"未完成",$"{record.Guidance}\n错误编号：{record.Id}；{record.Code}\n日志：{record.LogPath}\n{record.StorageWarning}",InfoBarSeverity.Error);
         Message.Visibility=Visibility.Visible;
     }
-    internal void CloseForRetry(){_exiting=true;Close();}
 }

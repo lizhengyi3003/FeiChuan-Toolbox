@@ -1,4 +1,7 @@
-param([switch]$Offline, [string]$OutputDirectory, [string]$CompilerPath, [switch]$WorkingTree)
+param(
+    [switch]$Offline, [string]$OutputDirectory, [string]$CompilerPath, [switch]$WorkingTree,
+    [string]$SignToolPath, [string]$SigningThumbprint, [switch]$RequireTrustedSignature
+)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 . (Join-Path $root 'tools\common\Artifacts.ps1')
@@ -49,7 +52,7 @@ $packages = Join-Path $stage 'packages'
 & (Join-Path $root 'build.ps1') -Publish -Offline:$Offline -OutputDirectory $publish
 $runtime = Get-Content -LiteralPath (Join-Path $publish 'release.json') -Raw | ConvertFrom-Json
 if ($runtime.version -ne $version) { throw '发布元数据版本不一致。' }
-& (Join-Path $root 'tools\build\Build-Installer.ps1') -PublishDirectory $publish -OutputDirectory $packages -CompilerPath $CompilerPath
+& (Join-Path $root 'tools\build\Build-Installer.ps1') -PublishDirectory $publish -OutputDirectory $packages -CompilerPath $CompilerPath -SignToolPath $SignToolPath -SigningThumbprint $SigningThumbprint -RequireTrustedSignature:$RequireTrustedSignature
 $names = Get-DistributionNames -RepositoryRoot $root -Version $version
 $zipName = $names.Portable
 $setupName = $names.Installer

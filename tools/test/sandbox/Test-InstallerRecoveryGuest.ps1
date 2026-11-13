@@ -1,7 +1,8 @@
 ﻿$ErrorActionPreference='Stop'
 if($env:USERNAME -ne 'WDAGUtilityAccount' -or -not(Test-Path -LiteralPath 'C:\TestScripts\run.ps1')){throw 'Only the dedicated disposable Windows Sandbox is allowed.'}
 $output='C:\TestResults';$install='C:\Toolbox Upgrade Simulation\app'
-$oldSetup='C:\TestScripts\previous-setup.exe';$newSetup='C:\TestScripts\candidate-setup.exe'
+$localInput=Join-Path $env:LOCALAPPDATA ('TunHotspot-InstallerTest-'+[guid]::NewGuid().ToString('N'))
+$oldSetup=Join-Path $localInput 'previous-setup.exe';$newSetup=Join-Path $localInput 'candidate-setup.exe'
 $result=[ordered]@{Success=$false;Cases=@();HostInstallationTouched=$false};$worker=$null
 function Setup([string]$file,[string]$name,[string[]]$extra=@()){
  $log=Join-Path $output ($name+'.log')
@@ -28,7 +29,8 @@ function Verify-Manifest{
  };return $count
 }
 function Seed{
- if((Setup $oldSetup 'seed') -ne 0){throw 'Seed failed'}
+ $exit=Setup $oldSetup 'seed'
+ if($exit -ne 0){throw "Baseline installer failed before upgrade verification (exit $exit)."}
 }
 function Start-Mcp{
  $start=New-Object Diagnostics.ProcessStartInfo
@@ -49,6 +51,9 @@ try{[IO.File]::WriteAllText('C:\TestResults\lock-ready.txt','ready');Start-Sleep
  return $process
 }
 try{
+ New-Item -ItemType Directory -Path $localInput | Out-Null
+ Copy-Item -LiteralPath 'C:\TestScripts\previous-setup.exe' -Destination $oldSetup
+ Copy-Item -LiteralPath 'C:\TestScripts\candidate-setup.exe' -Destination $newSetup
  Seed;Start-Mcp;$before=Snapshot
  $exit=Setup $newSetup '01-silent-without-exit-consent'
  $unchanged=Same $before (Snapshot)
@@ -108,7 +113,15 @@ try{
  $exit=Setup $newSetup '08-cooperative-current-ui-exit' @('/CLOSEOWNAPPS=1')
  if($exit -ne 0 -or -not $ui.HasExited){throw 'Current UI cooperative exit failed'}
  if(Select-String -LiteralPath (Join-Path $output '08-cooperative-current-ui-exit.log') -Pattern '旧版退出兜底' -Encoding utf8 -Quiet){throw 'Current UI unexpectedly needed force exit'}
- $result.Cases+=@{Name='CooperativeCurrentUiExit';ExitCode=$exit;FilesVerified=(Verify-Manifest);ForceExitUsed=$false}
+ $ui.Dispose()
+ $operations=Join-Path $env:LOCALAPPDATA 'TunHotspot.WinUI\operations.jsonl'
+ $cleanExit=Get-Content -LiteralPath $operations -Encoding utf8 -Tail 30 | ForEach-Object {$_ | ConvertFrom-Json} |
+  Where-Object {$_.action -eq 'toolbox-closed' -and $_.details.forUpdate -eq $true}
+ if(-not $cleanExit){throw 'UI exited without recording its completed update shutdown'}
+ $lease=Join-Path $env:USERPROFILE '.FeiChuanToolbox\toolbox-maintenance.lock'
+ $exclusive=[IO.File]::Open($lease,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+ $exclusive.Dispose()
+ $result.Cases+=@{Name='CooperativeCurrentUiExit';ExitCode=$exit;FilesVerified=(Verify-Manifest);ForceExitUsed=$false;DatabaseLeaseReleased=$true}
 
  $coordinator='C:\TestScripts\Upgrade-Coordinator.ps1';$receipt=Join-Path $output 'abandoned-prepare.json'
  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $coordinator -Action Prepare -Target $install -Manifest (Join-Path $install 'files.sha256') -ResultFile $receipt -InstallerPid $PID -AllowExit

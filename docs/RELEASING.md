@@ -36,6 +36,10 @@ Release 中的单文件 WinGet 清单和 Scoop JSON 供审核/本地使用，并
 
 本地开发打包仍使用 `tools/build/Build-Release.ps1`，默认要求已提交源码；`-WorkingTree` 仅作本地验证，会记录 sourceDirty=true。artifacts/current 是本地当前产物，不把整个 artifacts 上传到 Release。
 
+本地和 GitHub 构建共用安装器脚本，在生成 SHA-256 之前移除产物的 `Zone.Identifier`。浏览器或聊天软件可以为接收端的文件另行写入该标记。下载者可核对发布清单的 SHA-256 后，在文件属性中对该副本解除锁定。
+
+需要验证发布者身份的安装包使用 `-RequireTrustedSignature -SignToolPath <Windows SDK 的 signtool.exe 路径> -SigningThumbprint <证书指纹>`。构建账户需能访问当前用户证书库中的代码签名证书及其私钥。Inno 在编译时对安装器、卸载器及安装器使用的临时副本签名，构建在签名和时间戳通过核验后生成 SHA-256。验收时，在未导入项目证书的干净 Windows 11 沙盒中，从带互联网来源标记的副本启动，核对发布者名称。
+
 ## Wiki
 
 维护 docs/wiki 中的已审查页面，经 main 的路径触发同步。GitHub 要求先在网页创建首个 Wiki 页面，再支持 Git 同步；未初始化时工作流会明确失败并保留版本化源文档。工作流只同步这些页面，不清空其他 Wiki 内容。

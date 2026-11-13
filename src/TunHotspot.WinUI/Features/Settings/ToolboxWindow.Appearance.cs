@@ -47,9 +47,16 @@ public sealed partial class ToolboxWindow : Window
         }
         catch(Exception ex){SystemBackdrop=null;ShellRoot.Background=new SolidColorBrush(Navigation.ActualTheme==ElementTheme.Dark?Microsoft.UI.Colors.Black:Microsoft.UI.Colors.White);_materialState="材质/字体已回退："+ex.Message;}
     }
-    private async Task LoadFonts()
+    private Task? _fontLoad;
+    private Task LoadFonts() => _fontLoad is { IsCompleted: false } ? _fontLoad : _fontLoad = LoadFontsCore();
+
+    private async Task LoadFontsCore()
     {
-        try{_fonts=await Task.Run(FontCatalog.Installed);AppLog.Write("font-enumeration",new{count=_fonts.Count});}
-        catch(Exception ex){_fonts=["Segoe UI Variable","Microsoft YaHei UI"];AppLog.Write("font-enumeration-error",new{ex.Message});}
+        try
+        {
+            var fonts = await Task.Run(FontCatalog.Installed);
+            if (!_exiting) _fonts = fonts;
+        }
+        catch(Exception ex){if (!_exiting) _fonts=["Segoe UI Variable","Microsoft YaHei UI"];AppLog.Write("font-enumeration-error",new{ex.Message});}
     }
 }

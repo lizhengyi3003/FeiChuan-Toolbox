@@ -27,6 +27,11 @@ AllowNoIcons=yes
 DisableDirPage=no
 PrivilegesRequired=lowest
 SetupArchitecture=x64
+#ifdef AuthenticodeSigning
+SignTool=FeiChuanAuthenticode
+SignedUninstaller=yes
+SignedUninstallerDir={#SignedUninstallerDirectory}
+#endif
 ArchitecturesAllowed=x64os
 MinVersion=10.0.22000
 OutputDir={#ProjectRoot}\artifacts\temp\preview\packages
@@ -72,6 +77,8 @@ var
   CoordinatorReady, Prepared, Committed, RecoveryComplete, RestartRequested: Boolean;
   CoordinatorPath, ResultPath, PayloadPath, OriginalSid, OperationPath, LastCoordMessage, InstallFailureMessage: String;
   InstallMutex: THandle;
+  CoordinationProgress: TOutputMarqueeProgressWizardPage;
+  ShowingCoordinationProgress: Boolean;
 
 function NativeGetCurrentProcessId: LongWord;
   external 'GetCurrentProcessId@kernel32.dll stdcall';
@@ -90,6 +97,22 @@ var Raw: AnsiString;
 begin
   Result := '';
   if LoadStringFromFile(Path, Raw) then Result := UTF8Decode(Raw);
+end;
+
+procedure CoordinatorOutput(const Line: String; const Error, FirstLine: Boolean);
+begin
+  if Error or (Pos('INSTALL_STAGE:', Line) <> 1) then Exit;
+  Log(Line);
+  if not ShowingCoordinationProgress then Exit;
+  if Line = 'INSTALL_STAGE:close' then
+    CoordinationProgress.SetText('正在等待旧版本退出…', '')
+  else if Line = 'INSTALL_STAGE:backup' then
+    CoordinationProgress.SetText('正在备份安装文件…', '')
+  else if Line = 'INSTALL_STAGE:verify' then
+    CoordinationProgress.SetText('正在逐文件核验安装结果…', '')
+  else if Line = 'INSTALL_STAGE:commit' then
+    CoordinationProgress.SetText('正在保存安装结果…', '');
+  CoordinationProgress.Animate;
 end;
 
 function RunCoordinator(const Mode: String): Integer;
@@ -124,11 +147,11 @@ begin
     if OperationPath <> '' then Parameters := Parameters + ' -Operation ' + AddQuotes(OperationPath);
     if (not WizardSilent) or (ExpandConstant('{param:CLOSEOWNAPPS|0}') = '1') then
       Parameters := Parameters + ' -AllowExit';
-    if (Mode = 'Verify') and (ExpandConstant('{param:QAVERIFYFAIL|0}') = '1') then
+    if (Mode = 'VerifyAndCommit') and (ExpandConstant('{param:QAVERIFYFAIL|0}') = '1') then
       Parameters := Parameters + ' -InjectVerificationFailure';
     Log('Installer coordination: ' + Mode);
-    if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Parameters,
-      ExpandConstant('{tmp}'), SW_HIDE, ewWaitUntilTerminated, ExitCode) then Result := ExitCode;
+    if ExecAndLogOutput(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Parameters,
+      ExpandConstant('{tmp}'), SW_HIDE, ewWaitUntilTerminated, ExitCode, @CoordinatorOutput) then Result := ExitCode;
     LastCoordMessage := ReadUtf8(ResultPath + '.message');
     MessageText := Trim(ReadUtf8(ResultPath + '.operation'));
     if MessageText <> '' then OperationPath := MessageText;
@@ -142,6 +165,25 @@ begin
   end;
 end;
 
+function RunWithProgress(const Mode, Status: String): Integer;
+begin
+  if WizardSilent then
+  begin
+    Result := RunCoordinator(Mode);
+    Exit;
+  end;
+  CoordinationProgress.SetText(Status, '');
+  CoordinationProgress.Show;
+  ShowingCoordinationProgress := True;
+  try
+    CoordinationProgress.Animate;
+    Result := RunCoordinator(Mode);
+  finally
+    ShowingCoordinationProgress := False;
+    CoordinationProgress.Hide;
+  end;
+end;
+
 function CanLaunchNormally: Boolean;
 begin
   { A runas restart cannot recover the original unelevated token. Use Explorer's shortcut instead. }
@@ -152,6 +194,7 @@ end;
 
 procedure InitializeWizard;
 begin
+  CoordinationProgress := CreateOutputMarqueeProgressPage('正在处理安装', '当前步骤完成后将自动继续。');
   OriginalSid := ExpandConstant('{param:ORIGSID|}');
   if RunCoordinator('Identity') <> 0 then
     RaiseException(LastCoordMessage);
@@ -183,7 +226,7 @@ var CheckResult: Integer;
 begin
   Result := True;
   if CurPageID <> wpSelectDir then Exit;
-  CheckResult := RunCoordinator('Inspect');
+  CheckResult := RunWithProgress('Inspect', '正在检查安装目录和写入权限…');
   if CheckResult = 0 then Exit;
   Result := False;
   if CheckResult = 10 then
@@ -195,12 +238,10 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var MutexName: String; CheckResult: Integer;
+var MutexName: String;
 begin
   Result := '';
   if RestartRequested then begin Result := '已转交管理员安装，当前窗口退出。'; Exit; end;
-  CheckResult := RunCoordinator('Inspect');
-  if CheckResult <> 0 then begin Result := LastCoordMessage; Exit; end;
   if InstallMutex = 0 then
   begin
     MutexName := 'Global\TunHotspot.Update.' + GetSHA256OfString(Lowercase(ExpandFileName(ExpandConstant('{app}'))));
@@ -212,7 +253,8 @@ begin
       Result := '另一安装/恢复正在使用此目录，尚未替换文件。'; Exit;
     end;
   end;
-  if RunCoordinator('Prepare') <> 0 then Result := LastCoordMessage;
+  if RunWithProgress('Prepare', '正在检查文件占用、关闭旧版本并备份安装文件…') <> 0 then
+    Result := LastCoordMessage;
 end;
 
 procedure DeinitializeSetup;
@@ -257,12 +299,11 @@ var
   CheckResult: Integer;
 begin
   if CurStep <> ssPostInstall then Exit;
-  CheckResult := RunCoordinator('Verify');
-  if CheckResult = 0 then CheckResult := RunCoordinator('Commit');
+  CheckResult := RunWithProgress('VerifyAndCommit', '正在核验已安装的文件并完成安装…');
   if CheckResult <> 0 then
   begin
     InstallFailureMessage := LastCoordMessage;
-    RecoveryComplete := RunCoordinator('Rollback') = 0;
+    RecoveryComplete := RunWithProgress('Rollback', '正在恢复安装前的文件和设置…') = 0;
     InstallFailureMessage := InstallFailureMessage + #13#10 + LastCoordMessage +
       '' + #13#10 + '备份与步骤日志：' + OperationPath;
     RaiseException(InstallFailureMessage);

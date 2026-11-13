@@ -20,6 +20,7 @@ $($matches[0].Groups['body'].Value.Trim())
 适用于 Windows 11 x64。安装器和完整便携 ZIP 包含运行时，无需安装 SDK。
 升级前保留个人数据备份；故障排查和运行验收见同标签源码中的 docs/VALIDATION.md 与 docs/TROUBLESHOOTING.md。
 下载后核对 SHA256SUMS.txt，并验证 GitHub artifact attestations。
+构建端会移除安装器的 Zone.Identifier。浏览器或聊天软件可能为下载副本添加互联网来源标记。核对 SHA-256 后，可右键安装器 → 属性 → 解除锁定，仅处理这份副本。
 二进制尚未做 Windows Authenticode 签名；构建证明不能代替代码签名或运行验收。
 WinGet/Scoop 清单供审核和本地使用，不代表已上架社区源。
 同标签源码和第三方许可随版本保留。

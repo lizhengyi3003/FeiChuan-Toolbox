@@ -1,4 +1,4 @@
-# 常见问题 · 1.5.8
+# 常见问题 · 1.5.9
 
 ## 如何找到最新版
 
@@ -9,6 +9,14 @@
 完整解压便携 ZIP，保留 Engine、运行库、PRI、Assets、Notices 等全部文件。不要从历史构建或其他版本补几份 DLL 混用。需要重新生成时运行 Build-Release.ps1，并检查 Test-Release.ps1 的结果。
 
 ## 安装错误 5、DLL 占用或更新未完成
+
+如果错误指向 `%LOCALAPPDATA%\Temp\is-*.tmp`，安装器在解包时就未能创建临时目录。可以从 PowerShell 7 在仓库根目录运行以下命令。脚本核对安装包旁的 SHA-256，并为本次安装进程设置独立的 `TEMP` 和 `TMP`。
+
+```powershell
+.\tools\install\Start-ToolboxInstaller.ps1 -InstallerPath .\artifacts\current\packages\FeiChuan-Toolbox-1.5.9-Setup-x64.exe
+```
+
+也可直接完整解压同目录的便携 ZIP，运行其中的 `TunHotspot.exe`。安装临时目录属于当前用户，脚本在安装进程退出后只删除空目录。参见 [Inno Setup 临时目录说明](https://jrsoftware.org/is6help/topic_securitymeasures.htm)。
 
 1.5.4 在目录页提权时有安装器自身重启调用缺陷，可能确认后仍没有 UAC，且错误被误报为未授权。1.5.5 已改为原生 Windows 提权，取消时可重试，启动失败会显示错误码与日志位置；见 [提权修复](reports/安装提权修复-20261104.md)。
 

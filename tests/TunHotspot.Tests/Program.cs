@@ -7,7 +7,7 @@ if(args.Length==1&&args[0]=="--installer-exit-fixture")
 }
 if(args.Length>0&&args[0]=="--hotspot-worker")
 {
-    int reads=0;while(await Console.In.ReadLineAsync() is string command){if(++reads>1)Environment.Exit(37);Console.WriteLine(Contract.Encode(new HotspotReply(true,new(false,"Unavailable",0,"fixture"))));await Console.Out.FlushAsync();}return;
+    int reads=0;while(await Console.In.ReadLineAsync() is string command){if(command=="keepalive")await Task.Delay(Timeout.Infinite);if(++reads>1)Environment.Exit(37);Console.WriteLine(Contract.Encode(new HotspotReply(true,new(false,"Unavailable",0,"fixture"))));await Console.Out.FlushAsync();}return;
 }
 if(args.Length==2&&args[0]=="--crash-database")
 {
@@ -57,7 +57,61 @@ try
  Check(!recovery.Observe(clock.AddMinutes(10),true,"Off"),"手动关闭撤销重连意图");
  recovery.SetRequested(true);recovery.AttemptStarted(clock);recovery.Observe(clock.AddSeconds(1),true,"On");recovery.Observe(clock.AddSeconds(61),true,"On");
  Check(recovery.Attempts==0,"持续稳定一分钟才恢复重试预算");
+ var loss = new HotspotLossTracker();
+ var on = new HotspotSnapshot(true, "On", 1, IdleTimeoutEnabled: false);
+ var off = new HotspotSnapshot(true, "Off", 0, IdleTimeoutEnabled: false);
+ Check(loss.Observe(on) is null && loss.Observe(new(true, "InTransition", 0)) is null &&
+     loss.Observe(off) == on && loss.Observe(off) is null, "热点经过切换状态后仍记录掉线，并保留最后在线的设备数和超时状态");
+ loss.Observe(on);
+ loss.StopCompleted();
+ Check(loss.Observe(off) is null, "成功的手动关停不会记为异常掉线");
+ Check(HotspotWindowsEvents.WlanCodes("""
+     <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+       <EventData><Data Name="SSID">private-network</Data><Data Name="InterfaceGuid">private-id</Data>
+       <Data Name="ErrorCode">1168</Data><Data Name="ReasonCode">0x42</Data></EventData>
+     </Event>
+     """) == " · ErrorCode=1168 · ReasonCode=66", "WLAN 诊断只提取已知数值代码，不记录网络名和设备标识");
  var store=new ToolboxStore(root);
+ var localAlert = new AlertEvent { Title = "机器告警", IsRead = true, Delivery = "已发送" };
+ store.SaveAlert(localAlert);
+ AlertEvent RemoteAlert() => new()
+ {
+     Id = localAlert.Id, Title = localAlert.Title, FirstSeen = localAlert.FirstSeen, LastSeen = localAlert.LastSeen
+ };
+ using (var writer = new Microsoft.Data.Sqlite.SqliteConnection(
+     new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "toolbox.db"), Pooling = false }.ToString()))
+ {
+     writer.Open();
+     using var transaction = writer.BeginTransaction();
+     store.MergeRemoteAlerts([RemoteAlert()]);
+     Check(true, "重复同步相同机器告警时，即使已有写事务也只读取");
+ }
+ var updatedAlert = RemoteAlert();
+ updatedAlert.Count++;
+ store.MergeRemoteAlerts([updatedAlert]);
+ Check(store.Alerts.Single(x => x.Id == localAlert.Id) is { Count: 2, IsRead: true, Delivery: "已发送" },
+     "机器告警更新后保留本地已读状态和投递结果");
+ using(var worker=new HotspotWorkerClient(Environment.ProcessPath!,root))
+ {
+    Check((await worker.Send("read")).State=="Unavailable","热点隔离进程可报告 TUN 不可用");
+    try{await worker.Send("read");throw new Exception("worker exit ignored");}catch(IOException){Check(true,"热点子进程崩溃被捕获，调用进程保持运行");}
+ }
+ var shutdownRoot = Path.Combine(root, "hotspot-shutdown");
+ await using (var worker = new HotspotWorkerClient(Environment.ProcessPath!, shutdownRoot))
+ {
+     await worker.Send("read");
+     var started = new DiagnosticLog(shutdownRoot).Recent("热点").Single(x => x.Operation == "热点隔离进程已启动");
+     using var child = System.Diagnostics.Process.GetProcessById(int.Parse(started.Details.Split('；')[0]["PID=".Length..]));
+     var pending = worker.Send("keepalive");
+     await worker.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+     try { await pending; throw new Exception("pending request survived shutdown"); }
+     catch (OperationCanceledException) { Check(child.HasExited, "退出取消等待中的热点请求并释放已退出的子进程"); }
+ }
+ using (var monitor = new LiveMonitor(store, Contract.Sid))
+ {
+     await monitor.StopAsync();
+     Check(await monitor.ScanNow() is null && monitor.State == "已停止", "已停止的监测器拒绝排入新的扫描");
+ }
  var migrationSource=Path.Combine(root,"migration-source");var migrationTarget=Path.Combine(root,"migration-target");var originalStore=new ToolboxStore(migrationSource);originalStore.Set("migrationMarker","preserved");
  UserDataMigration.Ensure(migrationTarget,migrationSource);Check(new ToolboxStore(migrationTarget,true).Get<string>("migrationMarker")=="preserved"&&File.Exists(Path.Combine(migrationSource,"toolbox.db")),"在线迁移核验副本且保留旧数据库");
  var badSource=Path.Combine(root,"bad-migration");Directory.CreateDirectory(badSource);File.WriteAllText(Path.Combine(badSource,"toolbox.db"),"broken");var badTarget=Path.Combine(root,"bad-target");
@@ -89,11 +143,6 @@ try
     var removed=StartupRegistration.SetAt(false,"C:\\Fixture\\TunHotspot.exe",disabled.Fingerprint,root,runKey,approvedKey);Check(!removed.Registered,"关闭仅移除本软件的登录启动值");
  }
  finally{Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(startupFixture,false);}
- using(var worker=new HotspotWorkerClient(Environment.ProcessPath!,root))
- {
-    Check((await worker.Send("read")).State=="Unavailable","热点隔离进程可报告 TUN 不可用");
-    try{await worker.Send("read");throw new Exception("worker exit ignored");}catch(IOException){Check(true,"热点子进程崩溃被捕获，调用进程保持运行");}
- }
  var filteredLog=new DiagnosticLog(Path.Combine(root,"filter-log"));filteredLog.Event("热点","警告","断开","https://user:secret@example.com/?access_token=hidden");filteredLog.Event("设置","信息","保存设置");
  Check(filteredLog.Recent("热点","警告").Count==1&&filteredLog.Recent("设置","错误").Count==0,"日志按类别和严重等级交叉筛选");
  Check(!filteredLog.Recent("热点")[0].Details.Contains("hidden")&&!filteredLog.Recent("热点")[0].Details.Contains("secret"),"日志过滤 URL 凭据和查询令牌");

@@ -23,6 +23,8 @@ namespace TunHotspot;
 
 public sealed partial class ToolboxWindow : Window
 {
+    private bool _pollDatabaseBusy;
+
     private async void GlobalScan_Click(object sender,RoutedEventArgs e)=>await GlobalScan();
     private async void CancelScan_Click(object sender,RoutedEventArgs e)
     {
@@ -46,9 +48,16 @@ public sealed partial class ToolboxWindow : Window
     }
     private void AttachDecisions()
     {
-        if(_snapshot is not null)_store.AttachOrigins(_snapshot);
-        var decisions=_store.Decisions.ToDictionary(x=>x.EntryId);
-        foreach(var e in _snapshot?.Entries??[])e.Analysis=decisions.TryGetValue(e.Id,out var decision)&&e.MatchesFingerprint(decision.Fingerprint)?decision:null;
+        if (_snapshot is null) return;
+        _store.AttachOrigins(_snapshot);
+        AttachDecisions(_store, _snapshot);
+    }
+
+    private static void AttachDecisions(ToolboxStore store, ScanSnapshot snapshot)
+    {
+        var decisions = store.Decisions.ToDictionary(x => x.EntryId);
+        foreach (var entry in snapshot.Entries)
+            entry.Analysis = decisions.TryGetValue(entry.Id, out var decision) && entry.MatchesFingerprint(decision.Fingerprint) ? decision : null;
     }
     private async Task GlobalScan()
     {
@@ -92,30 +101,78 @@ public sealed partial class ToolboxWindow : Window
         SaveSettings();Tell(_settings.Paused?"监测已暂停":"监测已恢复","手动扫描仍可使用；没有停止其他服务或改变热点。");if(_page=="settings")RenderPage();
         _tray?.Update($"飞船的小工具箱 · {(_settings.Paused?"监测已暂停":"监测运行中")} · 未读提醒 {_store.Alerts.Count(x=>!x.IsRead)}");
     }
-    private async Task Poll()
+    private Task _pollTask = Task.CompletedTask;
+    private Task Poll()
+    {
+        if (!_pollTask.IsCompleted || _exiting) return _pollTask;
+        return _pollTask = PollCore();
+    }
+
+    private async Task PollCore()
     {
         if (_startupUnavailable) return;
         if(_polling||_exiting)return;_polling=true;
         try
         {
-            try
+            WireMessage? response = null;
+            try { response = await AdminClient.Service(new(){Kind="status"}, _windowStop.Token); }
+            catch (Exception ex)
             {
-                var response=await AdminClient.Service(new(){Kind="status"});_serviceConnected=true;_monitor.Paused=true;
+                if (_exiting) return;
+                if (_serviceConnected)
+                {
+                    _serviceConnected = false;
+                    _machineSnapshotId = null;
+                    ReportException(ex, "连接机器采集组件");
+                }
+                _monitor.Paused = _settings.Paused;
+            }
+            if (_exiting) return;
+            if (response is not null)
+            {
+                _serviceConnected=true;_monitor.Paused=true;
                 if(response.Snapshot is not null&&response.Snapshot.Id!=_machineSnapshotId&&response.Snapshot.Started>=_lastControlTime)
-                {_machineSnapshotId=response.Snapshot.Id;_store.SaveSnapshot(response.Snapshot);ApplySnapshot(response.Snapshot);if(_serviceScanRequested&&response.Progress is null){_serviceScanRequested=false;CancelScanButton.IsEnabled=false;}}
+                {
+                    _store.SaveSnapshot(response.Snapshot);
+                    ApplySnapshot(response.Snapshot);
+                    _machineSnapshotId=response.Snapshot.Id;
+                    if(_serviceScanRequested&&response.Progress is null){_serviceScanRequested=false;CancelScanButton.IsEnabled=false;}
+                }
                 if(response.Progress is not null)ShowProgress(response.Progress);
                 else if(_serviceScanRequested&&response.ScanCancelled){_serviceScanRequested=false;CancelScanButton.IsEnabled=false;ScanProgressBar.IsIndeterminate=false;ScanTitle.Text="机器扫描已取消，保留上次结果";}
-                if(response.Alerts is not null)_store.MergeRemoteAlerts(response.Alerts);if(response.Events is not null)await Task.Run(()=>_store.AddEvents(response.Events));
+                await Task.Run(() =>
+                {
+                    if (response.Alerts is not null) _store.MergeRemoteAlerts(response.Alerts);
+                    if (response.Events is not null) _store.AddEvents(response.Events);
+                });
+                if (_exiting) return;
             }
-            catch(Microsoft.Data.Sqlite.SqliteException sql)when(sql.SqliteErrorCode is 11 or 26){throw;}
-            catch(Exception ex){if(_serviceConnected){_serviceConnected=false;_machineSnapshotId=null;ReportException(ex,"连接机器采集组件");}_monitor.Paused=_settings.Paused;}
-            if(_settings.Notifications)
+            bool notifications = _settings.Notifications;
+            var status = await Task.Run(() => (
+                Alerts: notifications ? _store.Alerts.Where(alert => alert.Delivery == "待发送").Take(3).ToArray() : [],
+                LastAnalysis: _store.Get<DateTimeOffset>("lastAnalysis"),
+                Overview: OverviewData.Read(_store)));
+            if (_exiting) return;
+            foreach (var alert in status.Alerts)
             {
-                foreach(var alert in _store.Alerts.Where(x=>x.Delivery=="待发送").Take(3))
-                {alert.Delivery=NotificationBridge.Send(alert);_store.SaveAlert(alert);}
+                alert.Delivery = NotificationBridge.Send(alert);
+                _store.SaveAlert(alert);
             }
-            var lastAnalysis=_store.Get<DateTimeOffset>("lastAnalysis");
+            var lastAnalysis = status.LastAnalysis;
             if(lastAnalysis!=_lastAnalysis){_lastAnalysis=lastAnalysis;AttachDecisions();if(_page is not ("hotspot" or "settings" or "configuration"))RenderPage();}
+            if (_overviewData != status.Overview)
+            {
+                _overviewData = status.Overview;
+                if (_page == "overview") RenderPage();
+            }
+            _pollDatabaseBusy = false;
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.SqliteErrorCode is 5 or 6)
+        {
+            if (!_pollDatabaseBusy)
+                new DiagnosticLog(AppLog.DataRoot).Event("数据库", "警告", "本地状态同步等待数据库",
+                    "本轮同步遇到数据库写锁，将在下一轮刷新重试。", $"SQLite {ex.SqliteErrorCode}/{ex.SqliteExtendedErrorCode}");
+            _pollDatabaseBusy = true;
         }
         catch(Exception ex)
         {
@@ -123,7 +180,8 @@ public sealed partial class ToolboxWindow : Window
             if(ex is Microsoft.Data.Sqlite.SqliteException sql && sql.SqliteErrorCode is 11 or 26)
             {
                 _startupUnavailable=true;_startupError="运行中发现数据库异常，已暂停当前界面的启动读写。请查看诊断日志。";
-                _poll.Stop();_monitor.Paused=true;_monitor.CancelScan();_monitor.Dispose();
+                _poll.Stop();
+                await _monitor.StopAsync();
                 if(_page is not ("settings" or "configuration" or "hotspot"))RenderPage();
             }
         }
