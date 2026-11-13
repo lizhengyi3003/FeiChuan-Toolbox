@@ -9,14 +9,19 @@ internal static class NotificationBridge
     internal static string Status { get; private set; } = "未注册";
     internal static event Action<string>? Invoked;
     private static bool _registered;
+    private static void OnNotificationInvoked(AppNotificationManager sender, AppNotificationActivatedEventArgs args)
+    {
+        if (args.Arguments.TryGetValue("eventId", out string? id) && Guid.TryParseExact(id, "N", out _)) Invoked?.Invoke(id);
+    }
     internal static void Register()
     {
         try
         {
             if (_registered) return;
-            AppNotificationManager.Default.NotificationInvoked += (sender, args) =>
-            { if (args.Arguments.TryGetValue("eventId", out string? id) && Guid.TryParseExact(id, "N", out var parsed)) Invoked?.Invoke(id!); };
-            AppNotificationManager.Default.Register(); _registered = true;
+            var manager = AppNotificationManager.Default;
+            manager.NotificationInvoked += OnNotificationInvoked;
+            try { manager.Register(); _registered = true; }
+            catch { manager.NotificationInvoked -= OnNotificationInvoked; throw; }
             Status = AppNotificationManager.Default.Setting.ToString();
         }
         catch (Exception ex) { Status = "通知注册不可用：" + ex.Message; AppLog.Write("notification-registration", new { ex.Message }); }
@@ -36,5 +41,16 @@ internal static class NotificationBridge
         }
         catch (Exception ex) { return "发送失败：" + ex.Message; }
     }
-    internal static void Close() { if (_registered) { try { AppNotificationManager.Default.Unregister(); } catch { } } }
+    internal static void Close()
+    {
+        if (!_registered) return;
+        _registered = false;
+        try
+        {
+            var manager = AppNotificationManager.Default;
+            manager.NotificationInvoked -= OnNotificationInvoked;
+            manager.Unregister();
+        }
+        catch (Exception ex) { AppLog.Write("notification-unregister-error", new { ex.Message }); }
+    }
 }

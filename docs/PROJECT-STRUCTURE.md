@@ -7,7 +7,7 @@ TunHotspot/
 ├─ TunHotspot.slnx                 # Visual Studio 解决方案，分开 src / tests / 文档
 ├─ Directory.Build.props          # 产品版本、目标框架、编译约定
 ├─ Directory.Packages.props       # NuGet 依赖版本的唯一入口
-├─ NuGet.Config                   # 本地 feed 与官方源
+├─ NuGet.Config                   # 默认还原使用公共 NuGet 源
 ├─ build.ps1                      # 普通构建 / 自包含发布
 ├─ test.ps1                       # 工程引用检查 + 现有功能检查
 ├─ src/
@@ -51,6 +51,7 @@ TunHotspot/
 ├─ tools/
 │  ├─ common/                    # 临时 SDK 环境及产物目录规则
 │  ├─ build/                     # 正式发布、安装器和分发准备
+│  ├─ install/                   # 使用独立临时目录启动本地安装包
 │  ├─ assets/                    # 图标生成工具
 │  ├─ maintenance/               # 有清单与校验的旧产物迁移
 │  └─ test/
@@ -78,11 +79,11 @@ TunHotspot/
 
 ## 产物和本机数据
 
-当前入口固定为 `artifacts/current`，内部只放 `app`、`packages` 和 `release.json`，代表同一轮验证通过的构建。开发预览到 `artifacts/temp/preview/app`，正式或本地完整包均先在 temp 暂存和核验，成功后切换 current。
+本机交付入口是 `artifacts/current`。其中 `app`、`packages` 和 `release.json` 属于同一轮构建，包版本与来源以 `release.json` 为准。`sourceDirty=true` 表示从有未提交修改的工作区构建。开发预览和打包中间文件放在 `artifacts/temp`。
 
-`archive/releases/<版本>` 保存历史安装包、便携包及原校验；`archive/builds` 保存旧展开构建的完整 ZIP、逐文件清单和 SHA-256。`reports` 保存测试与修复证据；`backups` 保存数据库、设置和源码原件；`temp` 保存可重新生成的中间产物。旧顶层路径已经迁移，去向见 `artifacts/reports/cleanup-20261103/migration.json`。
+`archive/releases/<版本>` 按版本保留历史包、下载的正式发布副本及原校验。`archive/builds` 保存历史开发构建。`reports` 保存测试、诊断及整理记录，`backups` 保存数据库、设置和源码原件。清理前按目录确认产物是否可重建，并检查正在运行的程序、重解析点及已归档的测试证据。
 
-当前产物使用产品版本 1.5.3。历史报告和归档保留当时版本，不伪装成新版本；Kumiryo 0.2.4、依赖版本、协议和数据库版本也不机械改为产品版本。
+产品版本以 `Directory.Build.props` 为准。历史报告和归档保留当时版本，Kumiryo、依赖、协议和数据库维护各自版本。
 
 运行数据 `%USERPROFILE%/.FeiChuanToolbox` 和受控 `%ProgramData%/TunHotspot` 不属于仓库整理范围。不能为了清理项目目录而删除用户库、原始备份、系统服务或安装版文件。
 

@@ -13,6 +13,8 @@
 
 `reports/` 保存有日期的修复与工程记录。报告描述当时版本和证据，当前行为以首页、使用说明及架构说明为准。`images/` 保存文档图片；本机旧笔记归入 artifacts/archive/notes，不参与发布。
 
-当前版本 1.5.8；最新修复：[Kumiryo 退出与备份状态](reports/Kumiryo退出修复-20261104.md)。安装机制见 [安装前 UAC 提权](reports/安装提权修复-20261104.md)、[安装升级与恢复](reports/安装升级修复-20261103.md)。工程记录：[产物清理与版本对齐](reports/产物清理与版本对齐-20261103.md)、[源码拆分](reports/工程整理-20261103.md)，旧验证见 [历史验收](reports/验收历史-截至1.5.2.md)。
+安装包、历史归档和临时产物的目录规则见 [工程目录](PROJECT-STRUCTURE.md#产物和本机数据)。安装遇到临时目录访问错误时，见 [安装故障排查](TROUBLESHOOTING.md#安装错误-5dll-占用或更新未完成)。
+
+历史记录包含 Kumiryo 配置、安装、工程整理和验收。[Kumiryo 退出与备份状态](reports/Kumiryo退出修复-20261104.md)、[安装前 UAC 提权](reports/安装提权修复-20261104.md)、[安装升级与恢复](reports/安装升级修复-20261103.md)、[产物清理与版本对齐](reports/产物清理与版本对齐-20261103.md)、[源码拆分](reports/工程整理-20261103.md)、[截至 1.5.2 的验收记录](reports/验收历史-截至1.5.2.md)。
 
 开源维护：[贡献规范](../CONTRIBUTING.md) · [安全策略](../SECURITY.md) · [安全审查](SECURITY-REVIEW.md) · [发布与包管理](RELEASING.md) · [Wiki 源页](wiki/Home.md) · [开源工程记录](reports/开源发布-20261104.md)。

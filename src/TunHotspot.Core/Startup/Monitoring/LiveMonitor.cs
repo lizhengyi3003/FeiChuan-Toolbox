@@ -17,7 +17,10 @@ public sealed class LiveMonitor : IDisposable
     private readonly List<FileSystemWatcher> _folders = [];
     private readonly List<RegistryChangeWatch> _registryWatches=[];
     private readonly object _watchGate=new();
+    private readonly object _lifecycleGate = new();
     private readonly List<Task> _tasks = [];
+    private Task? _shutdown;
+    private volatile bool _stopping;
     private TraceEventSession? _etw;
     private CancellationTokenSource? _activeScan;
     private int _scanning;
@@ -36,7 +39,13 @@ public sealed class LiveMonitor : IDisposable
     public bool Paused
     {
         get=>_paused;
-        set{if(_paused==value)return;_paused=value;_store.AddEvents([new(){Kind=value?"监测暂停":"监测恢复",Name="本软件采集",Detail="手动扫描仍可使用；此记录不代表完整运行事件覆盖。"}]);if(!value)Changed();}
+        set
+        {
+            if (_stopping || _paused == value) return;
+            _paused = value;
+            Enqueue(new() { Kind = value ? "监测暂停" : "监测恢复", Name = "本软件采集", Detail = "手动扫描仍可使用。" });
+            if (!value) Changed();
+        }
     }
     public event Action<ScanSnapshot>? SnapshotReady;
     public event Action<ScanProgress>? Progress;
@@ -44,8 +53,19 @@ public sealed class LiveMonitor : IDisposable
 
     public void Start()
     {
-        State = "配置变化监测启动；进程事件准备中";
-        _tasks.Add(Task.Run(RecordEvents)); _tasks.Add(Task.Run(ObserveEtw)); _tasks.Add(Task.Run(Loop));
+        lock (_lifecycleGate)
+        {
+            if (_stopping || _tasks.Count != 0) return;
+            State = "配置变化监测启动；进程事件准备中";
+            _tasks.Add(Task.Run(RecordEvents));
+            _tasks.Add(Task.Run(ObserveEtw));
+            _tasks.Add(Task.Run(Loop));
+            _tasks.Add(Task.Run(WatchStartupFolders));
+        }
+    }
+
+    private void WatchStartupFolders()
+    {
         try
         {
             using var m = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
@@ -55,15 +75,20 @@ public sealed class LiveMonitor : IDisposable
             { using var k = root.OpenSubKey(sid); var p = k?.GetValue("ProfileImagePath") as string; if (p is not null) paths.Add(Path.Combine(Environment.ExpandEnvironmentVariables(p), @"AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup")); }
             foreach (var path in paths)
             {
+                if (_stopping) break;
+                FileSystemWatcher? watcher = null;
                 try
                 {
                     if(CommandInspector.LocalPathGap(path) is not null||!Directory.Exists(path))continue;
-                    var watcher = new FileSystemWatcher(path) { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite, EnableRaisingEvents = true };
+                    watcher = new FileSystemWatcher(path) { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite };
                     watcher.Changed += (_, _) => Changed(); watcher.Created += (_, _) => Changed(); watcher.Deleted += (_, _) => Changed(); watcher.Renamed += (_, _) => Changed();
                     watcher.Error += (_, _) => { Changed(); Publish(new() { Kind = "监测缺口", Name = "启动目录通知", Detail = "目录通知发生错误，安排补扫。" }); };
+                    watcher.EnableRaisingEvents = true;
                     _folders.Add(watcher);
+                    watcher = null;
                 }
                 catch (Exception ex) { Publish(new() { Kind = "监测缺口", Name = path, Detail = ex.Message }); }
+                finally { watcher?.Dispose(); }
             }
         }
         catch (Exception ex) { Publish(new() { Kind = "监测缺口", Name = "目录监测", Detail = ex.Message }); }
@@ -72,9 +97,11 @@ public sealed class LiveMonitor : IDisposable
     public void Reconcile(string reason){Changed();Publish(new(){Kind="监测恢复核对",Name=reason,Detail="将重新核对当前配置；不推定这是一次完整内核重启。"});}
     public async Task<ScanSnapshot?> ScanNow(CancellationToken token = default)
     {
+        if (_stopping) return null;
         if (!await _scanGate.WaitAsync(0, token)) return null;
         try
         {
+            if (_stopping) return null;
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token);
             _activeScan=linked;LastScanCancelled=false;Volatile.Write(ref _scanning,1);
             var progress = new DirectProgress<ScanProgress>(p => { CurrentProgress=p;Progress?.Invoke(p); });
@@ -195,22 +222,27 @@ public sealed class LiveMonitor : IDisposable
             };
             try { session.EnableProvider("Microsoft-Windows-TaskScheduler", TraceEventLevel.Informational); } catch (Exception ex) { Publish(new() { Kind = "监测缺口", Name = "任务 ETW", Detail = ex.Message }); }
             _etw = session;State = Contract.Privilege+" ETW 进程与配置监测运行中";
-            _stop.Token.Register(() => { try { session.Source.StopProcessing(); } catch { } });
-            session.Source.Process();
+            using var registration = _stop.Token.Register(() => { try { session.Source.StopProcessing(); } catch { } });
+            if (!_stopping) session.Source.Process();
         }
         catch (Exception ex) { State = "配置监测运行；ETW 不可用：" + ex.Message; Publish(new() { Kind = "监测缺口", Name = "ETW", Detail = State }); }
         finally { _etw = null; }
     }
     private void Publish(ObservedEvent entry)
     {
-        if (Paused) return;
+        if (_stopping || Paused) return;
+        Enqueue(entry);
+    }
+
+    private void Enqueue(ObservedEvent entry)
+    {
         if (!_events.Writer.TryWrite(entry)) Interlocked.Increment(ref _dropped);
     }
     private async Task RecordEvents()
     {
         try
         {
-            while (await _events.Reader.WaitToReadAsync(_stop.Token))
+            while (await _events.Reader.WaitToReadAsync())
             {
                 var batch = new List<ObservedEvent>();
                 while (batch.Count < 300 && _events.Reader.TryRead(out var item)) batch.Add(item);
@@ -222,20 +254,46 @@ public sealed class LiveMonitor : IDisposable
                     if(alert is null)alert=new(){EntryId=key,Title="监测覆盖需要核实："+gap.Name,Expected="采集链路可用",Actual=gap.Detail,Evidence="监测故障记录，不表示其他软件修改了启动配置。"};else{alert.LastSeen=DateTimeOffset.UtcNow;alert.Count++;}
                     _store.SaveAlert(alert);
                 }
-                await Task.Delay(250, _stop.Token);
+                if (!_stopping) await Task.Delay(250);
             }
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { State = "运行事件保存失败：" + ex.Message;new DiagnosticLog(_store.Root).Record("启动管理运行事件保存失败",ex); }
     }
-    public void Dispose()
+    public Task StopAsync()
     {
-        _stop.Cancel(); foreach (var f in _folders) f.Dispose();
-        lock(_watchGate){foreach(var watcher in _registryWatches)watcher.Dispose();_registryWatches.Clear();}
-        try { _etw?.Dispose(); } catch { }
-        try { Task.WaitAll(_tasks.ToArray(), TimeSpan.FromSeconds(3)); } catch { }
-        State = "已停止";
+        lock (_lifecycleGate)
+        {
+            if (_shutdown is not null) return _shutdown;
+            _stopping = true;
+            return _shutdown = Task.Run(StopCore);
+        }
     }
+
+    private async Task StopCore()
+    {
+        _stop.Cancel();
+        _events.Writer.TryComplete();
+        try { await Task.WhenAll(_tasks).ConfigureAwait(false); }
+        catch (Exception ex) { new DiagnosticLog(_store.Root).Record("停止启动管理监测", ex); }
+        // Service-initiated scans can run outside the monitor's own task list.
+        await _scanGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            foreach (var watcher in _folders) watcher.Dispose();
+            _folders.Clear();
+            lock (_watchGate)
+            {
+                foreach (var watcher in _registryWatches) watcher.Dispose();
+                _registryWatches.Clear();
+            }
+            _stop.Dispose();
+            State = "已停止";
+        }
+        finally { _scanGate.Release(); }
+    }
+
+    public void Dispose() => StopAsync().GetAwaiter().GetResult();
 }
 
 public sealed class DirectProgress<T>(Action<T> handler) : IProgress<T>

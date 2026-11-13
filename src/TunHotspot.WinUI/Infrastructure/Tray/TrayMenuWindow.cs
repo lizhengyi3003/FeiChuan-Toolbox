@@ -2,19 +2,12 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.WindowsRuntime;
 using TunHotspot.Core;
 using Windows.Foundation;
 using Windows.Graphics;
-using Windows.Graphics.Imaging;
-using Windows.Storage;
-using Windows.System;
-using Windows.UI.ViewManagement;
 
 namespace TunHotspot;
 
@@ -29,13 +22,11 @@ internal sealed class TrayMenuWindow : Window
     private readonly List<MenuFlyoutItem> _items = [];
     private readonly TrayMenuState _state;
     private readonly Action<string> _command;
-    private readonly bool _qa;
     private bool _shown, _closed, _menuShown;
-    private int _x, _y;
 
-    internal TrayMenuWindow(TrayMenuState state, Action<string> command, bool qa = false)
+    internal TrayMenuWindow(TrayMenuState state, Action<string> command)
     {
-        _state = state; _command = command; _qa = qa;
+        _state = state; _command = command;
         Title = "飞船的小工具箱 · 托盘菜单";
         ExtendsContentIntoTitleBar = true;
         AppWindow.IsShownInSwitchers = false;
@@ -54,7 +45,7 @@ internal sealed class TrayMenuWindow : Window
         Add("设置", "\uE713", "settings", "S");
         _menu.Items.Add(new MenuFlyoutSeparator());
         var exit = Add("退出托盘", "\uE8BB", "exit", "Q");
-        ToolTipService.SetToolTip(exit, state.MachineConnected ? "退出后，机器采集组件继续运行" : "退出后，当前会话监测停止");
+        AutomationProperties.SetHelpText(exit, state.MachineConnected ? "退出后，机器采集组件继续运行" : "退出后，当前会话监测停止");
         Content = _root;
         ApplyAppearance();
         _root.Loaded += (_, _) => ShowMenu();
@@ -66,8 +57,6 @@ internal sealed class TrayMenuWindow : Window
         };
         _menu.Closed += (_, _) => Dismiss();
         Closed += (_, _) => _closed = true;
-        int round = 2;
-        _ = DwmSetWindowAttribute(WinRT.Interop.WindowNative.GetWindowHandle(this), 33, ref round, sizeof(int));
     }
 
     private MenuFlyoutItem Add(string text, string glyph, string command, string access, bool enabled = true)
@@ -98,7 +87,19 @@ internal sealed class TrayMenuWindow : Window
 
     internal void ShowAt(int x, int y)
     {
-        _x = x; _y = y;
+        // WinUI can enforce a minimum HWND size. Clip the anchor itself before
+        // showing it; the unconstrained MenuFlyout draws in its own popup.
+        nint region = CreateRectRgn(0, 0, 0, 0);
+        if (region == 0) throw new Win32Exception("无法创建托盘菜单锚点区域。");
+        nint anchor = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        // Suppress the anchor's DWM frame and shadow as well as its client area.
+        int disableNonClientRendering = 1;
+        _ = DwmSetWindowAttribute(anchor, 2, ref disableNonClientRendering, sizeof(int));
+        if (SetWindowRgn(anchor, region, true) == 0)
+        {
+            _ = DeleteObject(region);
+            throw new Win32Exception("无法隐藏托盘菜单锚点。");
+        }
         AppWindow.MoveAndResize(new RectInt32(x, y, 1, 1));
         _shown = true; Activate();
         if (_root.IsLoaded) ShowMenu();
@@ -115,17 +116,6 @@ internal sealed class TrayMenuWindow : Window
         });
     }
 
-    private void KeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (e.Key == VirtualKey.Escape) { Dismiss(); e.Handled = true; return; }
-        if (e.Key is not (VirtualKey.Up or VirtualKey.Down or VirtualKey.Home or VirtualKey.End)) return;
-        var enabled = _items.Where(x => x.IsEnabled).ToList(); if (enabled.Count == 0) return;
-        object focused = FocusManager.GetFocusedElement(_root.XamlRoot);
-        int index = enabled.FindIndex(x => ReferenceEquals(x, focused));
-        index = e.Key switch { VirtualKey.Home => 0, VirtualKey.End => enabled.Count - 1, VirtualKey.Up => (index - 1 + enabled.Count) % enabled.Count, _ => (index + 1) % enabled.Count };
-        enabled[index].Focus(FocusState.Keyboard); e.Handled = true;
-    }
-
     internal void Dismiss() { if (!_closed) { _closed = true; _menu.Hide(); Close(); } }
 
     internal async Task CaptureForQa(string name)
@@ -138,6 +128,8 @@ internal sealed class TrayMenuWindow : Window
         AppLog.Write("qa-tray-ready", new { name, _presenter.ActualWidth, _presenter.ActualHeight, controls = _items.Count });
     }
 
-    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint window);
+    [DllImport("gdi32.dll")] private static extern nint CreateRectRgn(int left, int top, int right, int bottom);
+    [DllImport("gdi32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool DeleteObject(nint region);
+    [DllImport("user32.dll")] private static extern int SetWindowRgn(nint window, nint region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(nint window, uint attribute, ref int value, int size);
 }

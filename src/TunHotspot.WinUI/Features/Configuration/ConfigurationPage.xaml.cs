@@ -22,7 +22,7 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
     private string? _job;
     private Process? _worker;
     private DateTimeOffset _launchTime;
-    private bool _busy, _loaded;
+    private bool _busy, _loaded, _disposed;
     private sealed record Row(string Title, string Detail);
     private sealed record HistoryRow(KumiryoReport Report)
     { public string Label => $"{Report.Started.ToLocalTime():MM-dd HH:mm} · {Report.Phase} · {Report.Id[..8]}"; }
@@ -51,7 +51,9 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
         _poll.Tick += async (_, _) => await Poll();
         Loaded += async (_, _) =>
         {
-            if (_loaded) return; _loaded = true; await Check(); RefreshHistory();
+            if (_loaded || _disposed) return; _loaded = true; await Check();
+            if (_disposed) return;
+            RefreshHistory();
             if (!_qa && KumiryoConfiguration.History().FirstOrDefault(x => !x.Finished) is KumiryoReport pending)
             {
                 _job = pending.Id;
@@ -69,7 +71,7 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
     }
     private async Task Check()
     {
-        if (_busy) return;
+        if (_busy || _disposed) return;
         TemplateLabel.Text = $"{_template.Name} · {_template.SourceVersion}";
         TemplateDetails.Text = $"9 个设置模块 · {(_template.Settings["globalAddedRules"] as JsonArray)?.Count ?? 0} 条自定义规则 · {_template.Captured.ToLocalTime():yyyy-MM-dd HH:mm}\n网络、TUN、DNS、应用、规则与外观一起迁移；目标账号、订阅、当前订阅选择和登录凭据保留。";
         TemplateJson.Text = _template.Settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
@@ -79,6 +81,7 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
             _preview = new() { Target = _target, Rules = 95, Checks = KumiryoConfigPlan.Modules.Select(x => new KumiryoCheck(x.Name, "待配置", "隔离界面验证示例，不操作真实客户端。")).ToList(), Differences = [new("/patchClashConfig/tun/enable", "关闭", "开启"), new("/globalAddedRules", "列表（0 项）", "列表（95 项）")] };
         }
         else _preview = await Task.Run(() => { _target ??= KumiryoConfiguration.Discover(); return KumiryoConfiguration.Preview(_target, _template); });
+        if (_disposed) return;
         ExecutablePath.Text = _target?.Executable ?? ""; PreferencesPath.Text = _target?.Preferences ?? "";
         BlockingReasons.Text = string.Join("\n", _preview.Blocks.Select(x => "• " + x));
         StatusTitle.Text = _preview.NeedsAdministrator ? "需要管理员核验" : !_preview.CanApply ? "需要先处理预检问题" : _preview.Differences.Count == 0 ? "九个设置模块已经一致" : $"发现 {_preview.Differences.Count} 处设置差异";
@@ -135,6 +138,7 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
     }
     private async Task Launch(string id, bool recover)
     {
+        if (_disposed) { if (!recover) KumiryoConfiguration.CancelUnstarted(id); return; }
         bool administrator = UseAdministrator.IsChecked == true;
         if (Contract.Elevated && !administrator) { if (!recover) KumiryoConfiguration.CancelUnstarted(id); throw new InvalidOperationException("工具箱当前以管理员运行，普通执行请先正常打开工具箱。"); }
         string engine = AdminClient.EnginePath;
@@ -143,10 +147,16 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
         var start = new ProcessStartInfo(engine) { UseShellExecute = administrator, CreateNoWindow = !administrator, WorkingDirectory = Path.GetDirectoryName(engine)!, WindowStyle = ProcessWindowStyle.Hidden };
         if (administrator) start.Verb = "runas";
         foreach (string value in new[] { recover ? "--kumiryo-recover" : "--kumiryo-job", id, "--owner", Contract.Sid }) start.ArgumentList.Add(value);
-        _worker?.Dispose(); _launchTime = DateTimeOffset.UtcNow;
+        _worker?.Dispose(); _worker = null; _launchTime = DateTimeOffset.UtcNow;
         SetBusy(true); OperationProgress.Value = 0; StatusTitle.Text = administrator ? "等待 Windows 管理员授权" : "正在启动配置工作组件";
         StatusDetail.Text = "执行组件启动前不写入客户端配置；请处理 Windows 授权窗口。";
-        try { _worker = await Task.Run(() => Process.Start(start)) ?? throw new IOException("配置工作组件未能启动。"); }
+        try
+        {
+            var worker = await Task.Run(() => Process.Start(start)) ?? throw new IOException("配置工作组件未能启动。");
+            // The independent transaction and its recovery watcher own completion.
+            if (_disposed) { worker.Dispose(); return; }
+            _worker = worker;
+        }
         catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         { if (!recover) KumiryoConfiguration.CancelUnstarted(id, true); SetBusy(false); RefreshHistory(id); Tell("管理员授权已取消", "尚未执行本次配置操作。", InfoBarSeverity.Warning); return; }
         catch { if (!recover) KumiryoConfiguration.CancelUnstarted(id); SetBusy(false); RefreshHistory(id); throw; }
@@ -155,7 +165,7 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
     }
     private async Task Poll()
     {
-        if (_job is null) return;
+        if (_disposed || _job is null) return;
         try
         {
             var report = KumiryoConfiguration.ReadReport(_job); if (report is null) return;
@@ -176,6 +186,7 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
             }
             else if (workerExited && !KumiryoConfiguration.WorkerAlive(report))
             {
+                _worker?.Dispose(); _worker = null;
                 _poll.Stop(); SetBusy(false); RefreshHistory(report.Id);
                 Tell("操作进程已经退出", "独立观察进程会检查是否需要恢复；也可以选择此记录，点击“恢复中断操作”。", InfoBarSeverity.Warning);
             }
@@ -282,5 +293,5 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
     }
     private void Tell(string title, string detail, InfoBarSeverity severity) { Notice.Title = title; Notice.Message = detail; Notice.Severity = severity; Notice.IsOpen = true; }
     private void Privilege_Changed(object sender, RoutedEventArgs e) { if (_loaded) UpdateButtons(); }
-    public void Dispose() { _poll.Stop(); _worker?.Dispose(); }
+    public void Dispose() { _disposed = true; _poll.Stop(); _worker?.Dispose(); _worker = null; }
 }

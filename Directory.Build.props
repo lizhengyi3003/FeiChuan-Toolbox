@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <Version>1.5.8</Version>
+    <Version>1.5.9</Version>
     <DistributionPrefix>FeiChuan-Toolbox</DistributionPrefix>
     <Product>飞船的小工具箱</Product>
     <Company>飞船的小工具箱</Company>

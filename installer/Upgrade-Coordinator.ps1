@@ -1,5 +1,5 @@
 ﻿param(
-    [Parameter(Mandatory=$true)][ValidateSet('Identity','Inspect','Prepare','Verify','Commit','Rollback')][string]$Action,
+    [Parameter(Mandatory=$true)][ValidateSet('Identity','Inspect','Prepare','VerifyAndCommit','Rollback')][string]$Action,
     [string]$Target, [string]$Manifest, [string]$Operation, [string]$OwnerSid,
     [Parameter(Mandatory=$true)][string]$ResultFile,
     [int]$InstallerPid, [switch]$AllowExit, [switch]$InjectVerificationFailure
@@ -22,6 +22,7 @@ $code=0
 $message=''
 $result=[ordered]@{Success=$false;Action=$Action;OwnerSid=$sid;Elevated=$elevated;Operation='';Message=''}
 
+if ($Action -ne 'Identity') {
 Add-Type -TypeDefinition @'
 using System;using System.Text;using System.Runtime.InteropServices;
 public static class ToolboxUpgradeNative {
@@ -41,6 +42,7 @@ public static class ToolboxUpgradeNative {
  public static void RequestUiExit(int pid){uint message=RegisterWindowMessage("TunHotspot.Toolbox.ExitForUpdate.v1");EnumWindows(delegate(IntPtr window,IntPtr unused){uint owner;GetWindowThreadProcessId(window,out owner);if(owner==(uint)pid){UIntPtr result;SendMessageTimeout(window,message,UIntPtr.Zero,IntPtr.Zero,2,1000,out result);}return true;},IntPtr.Zero);}
 }
 '@
+}
 
 function Full([string]$path){[IO.Path]::GetFullPath($path).TrimEnd('\')}
 function No-Links([string]$path){
@@ -152,13 +154,19 @@ function Close-Owned {
   if(-not $processes.Count){Start-Sleep -Milliseconds 400;if(-not @(Owned-Processes).Count){return};continue}
   if(-not $AllowExit){foreach($entry in $processes){$entry.Process.Dispose()};throw '本软件仍在运行。静默安装需要显式 /CLOSEOWNAPPS=1；交互安装在准备页确认自动退出。'}
   if(++$attempts -gt 3){foreach($entry in $processes){$entry.Process.Dispose()};throw '工具箱进程反复被重新拉起；尚未替换文件，请暂时断开其 Codex MCP 连接后重试。'}
-  foreach($entry in $processes){
+  # Let the UI drain its work and close the owned hotspot worker first.
+  try{foreach($entry in ($processes | Sort-Object { if($_.Role -eq '界面'){0}else{1} })){
    $process=$entry.Process
    try{
     if($process.HasExited){continue}
     Log-Step '请求退出' ($entry.Role+' PID '+$process.Id)
     $eventName='Local\TunHotspot.Setup.Exit.'+$process.Id+'.'+$entry.Started
-    try{$signal=[Threading.EventWaitHandle]::OpenExisting($eventName);try{[void]$signal.Set()}finally{$signal.Dispose()}}catch [Threading.WaitHandleCannotBeOpenedException]{}
+    $signalled=$false
+    try{$signal=[Threading.EventWaitHandle]::OpenExisting($eventName);try{$signalled=$signal.Set()}finally{$signal.Dispose()}}catch [Threading.WaitHandleCannotBeOpenedException]{}
+    if($entry.Role -eq '界面' -and $signalled){
+     if(-not $process.WaitForExit(20000)){throw '工具箱仍在安全退出。尚未替换文件，请待工具箱退出后重试。'}
+     continue
+    }
     if($entry.Role -eq '界面'){[ToolboxUpgradeNative]::RequestUiExit($process.Id);if(-not $process.WaitForExit(1500)){[void]$process.CloseMainWindow()}}
     if(-not $process.WaitForExit(2500)){
      # The Process handle was acquired before the path/owner/start-time checks;
@@ -167,7 +175,7 @@ function Close-Owned {
      $process.Kill();if(-not $process.WaitForExit(5000)){throw '本软件进程退出超时。'}
     }
    }finally{$process.Dispose()}
-  }
+  }}finally{foreach($entry in $processes){$entry.Process.Dispose()}}
  }
  throw '无法稳定解除本软件占用，尚未替换文件。'
 }
@@ -259,13 +267,11 @@ try{
  elseif($Action -in @('Inspect','Prepare')){
   $Target=Check-Target $Target
   Write-Permission
-  $payload=@(Payload $Manifest)
   if($Action -eq 'Inspect'){
-   $running=@(Owned-Processes)
    $message='目标权限可用；安装将退出本目录下的工具箱界面、热点工作进程和 Codex 桥接，备份后替换并核验。'
-   foreach($entry in $running){$message+="`n"+$entry.Role+' PID '+$entry.Process.Id;$entry.Process.Dispose()}
    $result.Success=$true
   }else{
+   $payload=@(Payload $Manifest)
    if($InstallerPid -le 0){throw '缺少安装器身份，尚未处理进程或文件。'}
    $parent=Get-Process -Id $InstallerPid -ErrorAction Stop
    $gate=Join-Path $Target '.toolbox-installing.json'
@@ -279,8 +285,10 @@ try{
     if($state.Phase -notin @('Committed','RolledBack')){Restore-Operation}else{Clear-Gate}
     $state=$null;$Operation=''
    }
+   Write-Output 'INSTALL_STAGE:close'
    Close-Owned
    foreach($item in $payload){$path=Child $Target $item.Relative;if(Test-Path -LiteralPath $path){$errorCode=[ToolboxUpgradeNative]::Access($path,$false);if($errorCode){throw "文件仍被占用或无写入权限：$($item.Relative)；Windows 错误 $errorCode。尚未替换程序。"}}}
+   Write-Output 'INSTALL_STAGE:backup'
    Private-Directory $operationRoot
    $Operation=Join-Path $operationRoot ([Guid]::NewGuid().ToString('N'));Private-Directory $Operation
    $result.Operation=$Operation
@@ -315,16 +323,17 @@ try{
   Read-State $Operation
   $result.Operation=$Operation
   if($Action -eq 'Rollback'){if($state.Phase -ne 'RolledBack'){Restore-Operation};$message=$state.Message;$result.Success=$true}
-  elseif($Action -eq 'Verify'){
+  elseif($Action -eq 'VerifyAndCommit'){
+   if($state.Phase -ne 'Prepared'){throw '安装状态与校验阶段不符，不能提交。'}
+   Write-Output 'INSTALL_STAGE:verify'
    $failures=@();foreach($file in $state.Payload){$path=Child $Target $file.Relative;if(-not(Test-Path -LiteralPath $path) -or (Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -ne $file.Hash){$failures+=$file.Relative}}
    if($InjectVerificationFailure){
     if($env:USERNAME -ne 'WDAGUtilityAccount' -or -not(Test-Path -LiteralPath 'C:\TestScripts\run.ps1')){throw '故障注入仅允许项目沙盒。'}
     $failures+='QA 注入的安装后校验失败'
    }
    if($failures.Count){throw ('安装后核验失败：'+($failures -join ', '))}
-   $state.Phase='Verified';Save-State;Log-Step '文件核验通过' ([string]$state.Payload.Count);$message='程序逐文件核验通过。';$result.Success=$true
-  }elseif($Action -eq 'Commit'){
-   if($state.Phase -ne 'Verified'){throw '尚未通过逐文件校验，不能完成安装。'}
+   $state.Phase='Verified';Save-State;Log-Step '文件核验通过' ([string]$state.Payload.Count)
+   Write-Output 'INSTALL_STAGE:commit'
    $state.Phase='Committed';Save-State;Clear-Gate;Log-Step '安装完成' '程序完整性已回读，原始备份保留';$message='安装完成；备份和日志：'+$Operation;$result.Success=$true
   }
  }

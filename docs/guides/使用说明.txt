@@ -1,8 +1,8 @@
-飞船的小工具箱 1.5.8 · Windows 11 x64
+飞船的小工具箱 1.5.9 · Windows 11 x64
 
 【运行与分享】
 解压整个便携包，运行 TunHotspot.exe。不能只发送一个 exe。
-也可发送 FeiChuan-Toolbox-1.5.8-Setup-x64.exe 安装包。
+也可发送 FeiChuan-Toolbox-1.5.9-Setup-x64.exe 安装包。
 包含 .NET、WinUI、VC++ 运行文件，不需要开发环境、Codex 或 API 密钥。
 当前未做代码签名，随包提供 SHA-256。
 

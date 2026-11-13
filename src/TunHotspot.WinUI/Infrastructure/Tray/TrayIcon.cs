@@ -14,6 +14,7 @@ internal sealed class TrayIcon : IDisposable
     internal event Action<string>? Command;
     internal event Action<int,int>? MenuRequested;
     internal event Action? SessionEnding;
+    internal event Action? UpdateExitRequested;
     internal event Action? FontsChanged;
     internal event Action? Resumed;
     internal TrayIcon(nint window)
@@ -22,8 +23,19 @@ internal sealed class TrayIcon : IDisposable
         _taskbar = RegisterWindowMessage("TaskbarCreated");
         _exitForUpdate = RegisterWindowMessage("TunHotspot.Toolbox.ExitForUpdate.v1");
         _icon = LoadImage(0, Path.Combine(AppContext.BaseDirectory,"Assets","TunHotspot.ico"),1,32,32,0x10);
-        if (!SetWindowSubclass(_window,_procedure,71,0)) throw new InvalidOperationException("托盘窗口回调注册失败。");
-        Add();
+        bool subclassed = false;
+        try
+        {
+            subclassed = SetWindowSubclass(_window, _procedure, 71, 0);
+            if (!subclassed) throw new InvalidOperationException("托盘窗口回调注册失败。");
+            Add();
+        }
+        catch
+        {
+            if (subclassed) RemoveWindowSubclass(_window, _procedure, 71);
+            if (_icon != 0) DestroyIcon(_icon);
+            throw;
+        }
     }
     private NotifyData Data(string tip="飞船的小工具箱 · 启动与后台监测") => new() { Size=(uint)Marshal.SizeOf<NotifyData>(), Window=_window, Id=71, Flags=1|2|4|0x20|0x80, Callback=Callback, Icon=_icon, Tip=tip[..Math.Min(127,tip.Length)], Guid=new Guid("76D7FD9A-1281-47E6-86C0-BCA9368C1217") };
     private void Add(){var data=Data();if(!Shell_NotifyIcon(0,ref data))throw new InvalidOperationException("系统托盘图标创建失败。");data.Version=4;Shell_NotifyIcon(4,ref data);}
@@ -33,7 +45,7 @@ internal sealed class TrayIcon : IDisposable
         try
         {
         if(message==_taskbar){Add();return 0;}
-        if(message==_exitForUpdate){Command?.Invoke("exit");return 0;}
+        if(message==_exitForUpdate){UpdateExitRequested?.Invoke();return 0;}
         if(message==0x0016&&wParam!=0) SessionEnding?.Invoke();
         if(message==0x001D)FontsChanged?.Invoke();
         if(message==0x0218&&(long)wParam is 7 or 18)Resumed?.Invoke();

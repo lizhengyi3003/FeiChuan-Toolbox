@@ -33,7 +33,14 @@ public sealed partial class ToolboxWindow : Window
         var font=new ComboBox{Header="字体（DirectWrite 自动枚举）",ItemsSource=_fonts,SelectedItem=_settings.Font,Text=_settings.Font,IsEditable=true,IsTextSearchEnabled=true,MinWidth=280,MaxDropDownHeight=320};
         font.Text=_settings.Font;
         font.PlaceholderText=_settings.Font;
-        font.Loaded+=(_,_)=>font.Text=_settings.Font;
+        font.Loaded += async (_, _) =>
+        {
+            font.Text = _settings.Font;
+            await (_fontLoad ?? LoadFonts());
+            if (_exiting || !font.IsLoaded) return;
+            font.ItemsSource = _fonts;
+            font.Text = _settings.Font;
+        };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(font,"Settings.Font");
         var size=new NumberBox{Header="正文字号",Value=_settings.FontSize,Minimum=10,Maximum=28,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact,Width=130};
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(materials,"Settings.Material");
@@ -90,11 +97,25 @@ public sealed partial class ToolboxWindow : Window
             Card(Column(Text("日志查看器",18,true),new LogViewer(_diagnostics,this))),
             Card(Column(Text("诊断与恢复",18,true),Text(_startupUnavailable?"启动数据库暂不可用。应用设置与诊断仍可使用；重新核验不会重置数据。":_store.Get<string>("recoveryNotice")??"启动数据库已加载。诊断记录独立保存，不依赖扫描数据库。"),diagnostics,
                 Row(Button("刷新诊断列表",RenderPage),Button("打开诊断目录",()=>{Directory.CreateDirectory(_diagnostics.Folder);Process.Start(new ProcessStartInfo(_diagnostics.Folder){UseShellExecute=true});}),Button("重新核验数据库",()=>{if(Application.Current is App app)app.RetryMainWindow();})),
-                Row(AsyncButton("立即备份并核验数据库",async()=>{if(_startupUnavailable)throw new InvalidOperationException("当前数据库不可用，不能将损坏副本当作备份。");string backup=await Task.Run(_store.CreateVerifiedBackup);Tell("备份核验成功",Path.GetFileName(backup));}),AsyncButton("从最近的有效备份恢复",async()=>
+                Row(AsyncButton("立即备份并核验数据库",async()=>
+                {
+                    if (_exiting || DatabaseWorkActive) return;
+                    if (_startupUnavailable) throw new InvalidOperationException("当前数据库不可用，不能将损坏副本当作备份。");
+                    var backup = Task.Run(_store.CreateVerifiedBackup);
+                    TrackDatabaseWork(backup);
+                    string path = await backup;
+                    if (!_exiting) Tell("备份核验成功", Path.GetFileName(path));
+                }),AsyncButton("从最近的有效备份恢复",async()=>
                 {
                     if(!_startupUnavailable)throw new InvalidOperationException("当前数据库可用。为避免覆盖有效历史，只在数据库不可用时提供此恢复。");
                     var dialog=new ContentDialog{Title="从有效备份恢复",Content="将完整归档当前原件，再恢复最近一份完整性检查通过的备份。备份之后的历史可能不包含在内，需要复扫；不会创建空库。",PrimaryButtonText="确认恢复",CloseButtonText="取消",XamlRoot=ShellRoot.XamlRoot};
-                    if(await dialog.ShowAsync()==ContentDialogResult.Primary){await Task.Run(()=>DatabaseRecovery.RestoreLatest(AppLog.DataRoot));if(Application.Current is App app)app.RetryMainWindow();}
+                    if (await dialog.ShowAsync() == ContentDialogResult.Primary && !_exiting && !DatabaseWorkActive)
+                    {
+                        var restore = Task.Run(() => DatabaseRecovery.RestoreLatest(AppLog.DataRoot));
+                        TrackDatabaseWork(restore);
+                        await restore;
+                        if (!_exiting && Application.Current is App app) app.RetryMainWindow();
+                    }
                 })),Text("重试只重新读取。数据库采用事务刷盘、启动核验、每六小时内首次打开及正常退出备份，保留最近五份有效备份；原始修复归档不自动删除。",12))));
         body.Padding=new Thickness(24,8,24,24);body.Spacing=16;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(body,"Settings.Content");

@@ -23,6 +23,13 @@ namespace TunHotspot;
 
 public sealed partial class ToolboxWindow : Window
 {
+    internal sealed record OverviewData(int Watches, int Unread, int Pending, AuditComparison? Audit)
+    {
+        internal static OverviewData Read(ToolboxStore store) =>
+            new(store.Watches.Count, store.Alerts.Count(alert => !alert.IsRead), store.Pending.Count,
+                store.Get<AuditComparison>("lastAdminAudit"));
+    }
+
     private UIElement Overview()
     {
         var snapshot=_snapshot;var body=Column(Text("启动与后台，一处看清",28,true),Text("扫描系统配置、核对实际运行，并把不确定的项目交给 Codex 分析。"));
@@ -32,9 +39,12 @@ public sealed partial class ToolboxWindow : Window
             Text($"{snapshot.Privilege} · {snapshot.Finished.ToLocalTime():yyyy-MM-dd HH:mm:ss} · {(snapshot.Cancelled?"已取消":snapshot.Complete?"所列采集范围完成":"流程完成，存在采集缺口")}"),
             Text($"本次读取 {snapshot.Entries.Count(x=>x.ObservationStatus=="本次读取"):N0} 项；另保留未能再次确认的历史入口 {snapshot.Entries.Count(x=>x.ObservationStatus!="本次读取"):N0} 项。",12),
             Text(string.Join("   /   ",counts.Select(x=>$"{x.Key} {x.Count()}"))))));
-        body.Children.Add(Card(Column(Text("监测与告警",18,true),Text($"采集：{(_serviceConnected?"已连接机器组件":_monitor.State)}\n关注 {_store.Watches.Count} 项，未读告警 {_store.Alerts.Count(x=>!x.IsRead)} 项，待分析 {_store.Pending.Count} 项。"),
+        var summary = _overviewData;
+        var monitoring = _serviceConnected ? "已连接机器组件" : _monitor.State;
+        body.Children.Add(Card(Column(Text("监测与告警",18,true),Text(summary is null ? $"采集：{monitoring}" :
+            $"采集：{monitoring}\n关注 {summary.Watches} 项，未读告警 {summary.Unread} 项，待分析 {summary.Pending} 项。"),
             Row(Button("查看全部入口",()=>Navigate("entries")),Button("查看通知与关注",()=>Navigate("alerts"))))));
-        if(_store.Get<AuditComparison>("lastAdminAudit") is AuditComparison audit)
+        if(summary?.Audit is AuditComparison audit)
             body.Children.Add(Card(Column(Text("最近管理员复核",18,true),Text($"{audit.Time.ToLocalTime():yyyy-MM-dd HH:mm:ss} · {audit.Privilege} · {audit.Entries} 项\n连续两轮：新增 {audit.Added.Count}、消失 {audit.Removed.Count}、配置/目标指纹变化 {audit.Changed.Count}；覆盖说明 {audit.Gaps.Count} 条。"),Text("仅代表该次复核窗口内的观察；覆盖缺口和之后的变化仍需查看扫描记录。",12))));
         body.Children.Add(Text("采集覆盖",20,true));
         foreach(var c in snapshot.Coverage)

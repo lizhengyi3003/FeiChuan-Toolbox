@@ -17,12 +17,12 @@ internal sealed class LaunchFailureWindow : Window
     private readonly TextBlock _explanation = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBox _details = new() { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 120, MaxHeight = 230 };
 
-    internal LaunchFailureWindow(Action retry)
+    internal LaunchFailureWindow(Func<Task> retry)
     {
         Title = "飞船的小工具箱 · 启动诊断";
         var retryButton = new Button { Content = "重试打开" };
         AutomationProperties.SetAutomationId(retryButton, "LaunchFailure.Retry");
-        retryButton.Click += (_, _) => { retryButton.IsEnabled = false; try { retry(); } finally { retryButton.IsEnabled = true; } };
+        retryButton.Click += async (_, _) => { retryButton.IsEnabled = false; try { await retry(); } finally { retryButton.IsEnabled = true; } };
         var logs = new Button { Content = "打开诊断目录" };
         logs.Click += (_, _) =>
         {

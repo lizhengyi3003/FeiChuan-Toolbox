@@ -74,7 +74,7 @@ public sealed partial class ToolboxWindow : Window
             {
                 _settings.Theme=page.Contains("dark")?"深色":"浅色";
                 var invoked=new TaskCompletionSource<string>();
-                var menu=new TrayMenuWindow(TrayState(),command=>{AppLog.Write("qa-tray-invoked",new{command});invoked.TrySetResult(command);},true);
+                var menu=new TrayMenuWindow(TrayState(),command=>{AppLog.Write("qa-tray-invoked",new{command});invoked.TrySetResult(command);});
                 try
                 {
                     var area=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;menu.ShowAt(area.X+area.Width-30,area.Y+area.Height-30);

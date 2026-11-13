@@ -3,7 +3,6 @@
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:automation="using:Microsoft.UI.Xaml.Automation"
  Title="飞船的小工具箱">
- <Window.SystemBackdrop><MicaBackdrop/></Window.SystemBackdrop>
  <Grid x:Name="ShellRoot" Background="Transparent">
   <Grid.RowDefinitions><RowDefinition Height="40"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
   <Grid x:Name="TitleArea" Background="Transparent" Padding="18,0,130,0">

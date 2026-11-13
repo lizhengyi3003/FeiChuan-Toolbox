@@ -199,15 +199,50 @@ public sealed class ToolboxStore
         Execute("INSERT INTO watches VALUES($id,$data) ON CONFLICT(id) DO UPDATE SET data=excluded.data", ("$id", rule.EntryId), ("$data", Contract.Encode(rule)));
     }
     public void RemoveWatch(string id) => Execute("DELETE FROM watches WHERE id=$id", ("$id", id));
-    public void SaveAlert(AlertEvent alert) => Execute("INSERT INTO alerts VALUES($id,$data) ON CONFLICT(id) DO UPDATE SET data=excluded.data", ("$id", alert.Id), ("$data", Contract.Encode(alert)));
+    private const string UpsertAlert = "INSERT INTO alerts VALUES($id,$data) ON CONFLICT(id) DO UPDATE SET data=excluded.data";
+    public void SaveAlert(AlertEvent alert) => Execute(UpsertAlert, ("$id", alert.Id), ("$data", Contract.Encode(alert)));
     public void MergeRemoteAlerts(IEnumerable<AlertEvent> alerts)
     {
-        var existing = Alerts.ToDictionary(x => x.Id);
-        foreach (var alert in alerts)
+        var incoming = alerts.ToList();
+        if (incoming.Count == 0) return;
+
+        using var db = Open();
+        using var read = db.CreateCommand();
+        read.CommandText = "SELECT data FROM alerts WHERE id=$id";
+        var readId = read.Parameters.Add("$id", SqliteType.Text);
+        (string? Before, string After) ReadMerge(AlertEvent alert)
         {
-            if (existing.TryGetValue(alert.Id, out var old)) { alert.Delivery = old.Delivery; alert.IsRead = old.IsRead; }
-            SaveAlert(alert);
+            readId.Value = alert.Id;
+            var before = read.ExecuteScalar() as string;
+            if (before is not null)
+            {
+                var old = Contract.Decode<AlertEvent>(before);
+                alert.Delivery = old.Delivery;
+                alert.IsRead = old.IsRead;
+            }
+            return (before, Contract.Encode(alert));
         }
+
+        // Status polling usually returns the same history. Avoid taking a write lock for it.
+        if (!incoming.Any(alert => { var merge = ReadMerge(alert); return merge.Before != merge.After; })) return;
+
+        using var tx = db.BeginTransaction();
+        read.Transaction = tx;
+        using var write = db.CreateCommand();
+        write.Transaction = tx;
+        write.CommandText = UpsertAlert;
+        var writeId = write.Parameters.Add("$id", SqliteType.Text);
+        var data = write.Parameters.Add("$data", SqliteType.Text);
+        foreach (var alert in incoming)
+        {
+            // Re-read under the writer lock to preserve concurrent local notification changes.
+            var merge = ReadMerge(alert);
+            if (merge.Before == merge.After) continue;
+            writeId.Value = alert.Id;
+            data.Value = merge.After;
+            write.ExecuteNonQuery();
+        }
+        tx.Commit();
     }
     public void SaveSnapshot(ScanSnapshot snapshot)
     {

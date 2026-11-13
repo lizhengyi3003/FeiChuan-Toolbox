@@ -15,6 +15,7 @@ public sealed partial class HotspotPage : UserControl
     private HotspotSnapshot? _snapshot;
     private bool _refreshing;
     private bool _busy;
+    private bool _hotspotWasOn;
     private bool _closed, _ready;
     private int _operationVersion;
     private int _startRequests;
@@ -41,8 +42,12 @@ public sealed partial class HotspotPage : UserControl
             if (_snapshot != state)
             {
                 AppLog.Write("hotspot-state-changed", new { previous = _snapshot?.State, state.State, state.TunConnected, state.Clients, state.IdleTimeoutEnabled, recoveryRequested = _recovery.Requested });
-                if(_snapshot?.IsOn==true&&!state.IsOn&&!state.IsTransitioning)
+                if(_hotspotWasOn && state.State is "Off" or "Unavailable")
+                {
+                    _hotspotWasOn = false;
                     ShowError(state.TunConnected?"Windows 已关闭热点。可查看热点类别日志后手动重试。":"Kumiryo TUN 已断开。工具箱保持运行，热点不会自动换用其他网络。");
+                }
+                if (state.IsOn) _hotspotWasOn = true;
                 _snapshot = state;
                 Render(state);
             }
@@ -50,7 +55,7 @@ public sealed partial class HotspotPage : UserControl
                 tunConnected = state.TunConnected, hotspotState = state.State, clients = state.Clients,
                 userStartRequests = _startRequests, userStopRequests = _stopRequests,
                 recoveryRequested = _recovery.Requested, recoveryAttempts = _recovery.Attempts,
-                noConnectionsTimeoutEnabled = state.IdleTimeoutEnabled, automaticNetworkSwitching = _recovery.Requested });
+                noConnectionsTimeoutEnabled = state.IdleTimeoutEnabled, automaticNetworkSwitching = false });
             if (_recovery.Observe(DateTimeOffset.UtcNow, state.TunConnected, state.State))
             {
                 _recovery.AttemptStarted(DateTimeOffset.UtcNow);
@@ -59,7 +64,11 @@ public sealed partial class HotspotPage : UserControl
             }
             RenderRecovery();
         }
-        catch (Exception ex) { if (!_closed) { Render(new(false,"Unknown",0,ex.Message));ShowError(ex.Message); } }
+        catch (Exception ex)
+        {
+            _recovery.Observe(DateTimeOffset.UtcNow, false, "Unknown");
+            if (!_closed) { _snapshot = null; Render(new(false,"Unknown",0,ex.Message));ShowError(ex.Message); }
+        }
         finally { _refreshing = false; }
     }
 
@@ -92,12 +101,12 @@ public sealed partial class HotspotPage : UserControl
             catch (Exception ex) { ShowError("未能关闭热点空闲超时：" + ex.Message); }
     }
 
-    internal void Dispose()
+    internal ValueTask StopAsync()
     {
         _closed = true;
         _timer.Stop();
         _recovery.SetRequested(false);
-        _service.Dispose();
+        return _service.DisposeAsync();
     }
 
     private async void Start_Click(object sender, RoutedEventArgs e)
@@ -129,7 +138,12 @@ public sealed partial class HotspotPage : UserControl
         AppLog.Write(recovery ? "hotspot-recovery-start" : start ? "user-start-request" : "user-stop-request", new { version });
         try
         {
-            if (start) await _service.StartAsync(); else await _service.StopAsync();
+            if (start) await _service.StartAsync();
+            else
+            {
+                await _service.StopAsync();
+                _hotspotWasOn = false;
+            }
             AppLog.Write("user-operation-completed", new { start, version });
         }
         catch (OperationCanceledException) { }
