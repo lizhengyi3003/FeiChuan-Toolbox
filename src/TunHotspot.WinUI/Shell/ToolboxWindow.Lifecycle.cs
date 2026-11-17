@@ -17,6 +17,7 @@ public sealed partial class ToolboxWindow : Window
 
     internal void OpenEvent(string id)
     {
+        if (_exiting || _startupLoading) return;
         if (_startupUnavailable)
         {
             Show();
@@ -39,6 +40,7 @@ public sealed partial class ToolboxWindow : Window
     internal void StartBackgroundWork()
     {
         if (_qa || _exiting) return;
+        NotificationBridge.Register();
         try
         {
             _tray = new(WinRT.Interop.WindowNative.GetWindowHandle(this));
@@ -62,20 +64,21 @@ public sealed partial class ToolboxWindow : Window
         _poll.Start();
         _monitor.Start();
         _ = Poll();
-        _startupBackup = Task.Run(() =>
+        var stop = _windowStop.Token;
+        _startupBackup = Task.Run(async () =>
         {
-            if (_windowStop.IsCancellationRequested) return;
-            try { _store.ReconcilePending(); }
-            catch (Exception ex) { _diagnostics.Record("启动后同步待分析队列", ex); }
-            if (_windowStop.IsCancellationRequested) return;
             try
             {
+                await Task.Delay(TimeSpan.FromSeconds(20), stop).ConfigureAwait(false);
+                _store.ReconcilePending();
+                stop.ThrowIfCancellationRequested();
                 string folder = Path.Combine(_store.Root, "database-backups");
                 if (!Directory.Exists(folder) || !Directory.EnumerateFiles(folder, "toolbox-*.db")
                     .Any(file => File.GetLastWriteTimeUtc(file) > DateTime.UtcNow.AddHours(-6)))
-                    _store.CreateVerifiedBackup();
+                    _store.CreateVerifiedBackup(stop);
             }
-            catch (Exception ex) { _diagnostics.Record("启动后数据库备份", ex); }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            catch (Exception ex) { _diagnostics.Record("后台数据库维护", ex); }
         });
     }
 
@@ -84,39 +87,39 @@ public sealed partial class ToolboxWindow : Window
 
     private async Task ShutdownCore(bool forUpdate, bool forRetry)
     {
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
         _exiting = true;
+        AppWindow.Hide();
         _poll.Stop();
-        _windowStop.Cancel();
-        _adminStop?.Cancel();
         _trayMenu?.Dismiss();
         _tray?.Dispose();
         _tray = null;
+        _windowStop.Cancel();
+        _adminStop?.Cancel();
         _configuration?.Dispose();
         try { _uiSettings.AdvancedEffectsEnabledChanged -= AdvancedEffectsChanged; } catch (Exception ex) { AppLog.Write("theme-unsubscribe-error", new { ex.Message }); }
         try { _accessibility.HighContrastChanged -= HighContrastChanged; } catch (Exception ex) { AppLog.Write("accessibility-unsubscribe-error", new { ex.Message }); }
         try
         {
-            await Task.WhenAll(_pollTask, _startupBackup, _databaseWork, _hotspot.StopAsync().AsTask(), _startupMonitor?.StopAsync() ?? Task.CompletedTask);
-            if (!_qa && !forRetry)
+            Task savePreferences = Task.CompletedTask;
+            if (!_qa && !forRetry && !_startupLoading)
             {
-                // Snapshot settings on the UI thread before the background save.
                 var settings = Contract.Decode<UserSettings>(Contract.Encode(_settings));
-                await Task.Run(() =>
+                savePreferences = Task.Run(() =>
                 {
                     try { _preferences.Save(settings); }
                     catch (Exception ex) { _diagnostics.Record("关闭时保存应用设置", ex); }
-                    if (!forUpdate && !_startupUnavailable)
-                        try { _store.CreateVerifiedBackup(); }
-                        catch (Exception ex) { _diagnostics.Record("关闭前数据库备份", ex); }
                 });
             }
+            await Task.WhenAll(savePreferences, _pollTask, _startupBackup, _databaseWork,
+                _hotspot.StopAsync().AsTask(), _startupMonitor?.StopAsync() ?? Task.CompletedTask);
         }
         catch (Exception ex) { _diagnostics.Record("工具箱退出", ex); }
         finally
         {
             _windowStop.Dispose();
             SystemBackdrop = null;
-            AppLog.Write("toolbox-closed", new { forUpdate, forRetry, machineMonitorMayContinue = _serviceConnected });
+            AppLog.Write("toolbox-closed", new { forUpdate, forRetry, elapsedMs = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds, machineMonitorMayContinue = _serviceConnected });
             _allowClose = true;
             Close();
         }

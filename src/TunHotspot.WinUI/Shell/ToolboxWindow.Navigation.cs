@@ -75,9 +75,22 @@ public sealed partial class ToolboxWindow : Window
         ConfigurationWorkspace.Visibility=configuration?Visibility.Visible:Visibility.Collapsed;
         SettingsWorkspace.Visibility=settings?Visibility.Visible:Visibility.Collapsed;
         VersionLabel.Text=Contract.ProductVersion+" · "+(hotspot?"兼容热点":configuration?"Kumiryo 一键配置":settings?"全局设置":"启动管理");
-        if(settings){SettingsWorkspace.Content=SettingsPage();return;}
+        if(settings && !_startupLoading){SettingsWorkspace.Content=SettingsPage();return;}
         if(hotspot){HotspotWorkspace.Content=_hotspotHost;return;}
         if(configuration){_configuration??=new ConfigurationPage(this,_qa);ConfigurationWorkspace.Content=_configuration;return;}
+        if (_startupLoading)
+        {
+            var progress = new ProgressBar { Minimum = 0, Maximum = 3, Value = _startupStep - 1 };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(progress, "Startup.LoadingProgress");
+            var content = Column(Text("正在加载启动管理", 26, true),
+                Text($"{_startupStage} · 第 {_startupStep}/3 步"), progress,
+                Text("此时可以打开兼容热点或 Kumiryo 一键配置。", 13));
+            content.MaxWidth = 420;
+            content.HorizontalAlignment = HorizontalAlignment.Center;
+            content.VerticalAlignment = VerticalAlignment.Center;
+            PageHost.Content = content;
+            return;
+        }
         if (_startupUnavailable)
         {
             VersionLabel.Text = Contract.ProductVersion + " · 启动数据待修复";

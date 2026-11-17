@@ -107,6 +107,7 @@ public sealed class LiveMonitor : IDisposable
             var progress = new DirectProgress<ScanProgress>(p => { CurrentProgress=p;Progress?.Invoke(p); });
             var snapshot = await Task.Run(() => new WindowsScanner(_owner, _store.Latest).Scan(progress, linked.Token), linked.Token);
             LastScanCancelled=snapshot.Cancelled;
+            if (_stopping && snapshot.Cancelled) return null;
             _store.SaveSnapshot(snapshot);RefreshRegistryWatches(); Interlocked.Exchange(ref _lastScan,Stopwatch.GetTimestamp()); SnapshotReady?.Invoke(snapshot); return snapshot;
         }
         catch(OperationCanceledException){LastScanCancelled=true;return null;}

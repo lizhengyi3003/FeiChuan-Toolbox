@@ -9,6 +9,8 @@ public sealed class KumiryoTemplate
     public string Name { get; set; } = "本机完整设置";
     public string SourceVersion { get; set; } = "0.2.4";
     public DateTimeOffset Captured { get; set; } = DateTimeOffset.UtcNow;
+    public bool PreserveExistingRules { get; set; }
+    public bool PreserveDnsSelection { get; set; }
     public JsonObject Settings { get; set; } = new();
 }
 
@@ -84,6 +86,7 @@ public sealed class KumiryoReport
 
 public static class KumiryoConfigPlan
 {
+    internal static readonly string[] DnsSelectionKeys = ["default-nameserver", "nameserver", "proxy-server-nameserver"];
     public static readonly KumiryoModule[] Modules =
     [
         new("overrideDns", "DNS 覆写开关"), new("globalAddedRules", "自定义分流规则"),
@@ -110,12 +113,22 @@ public static class KumiryoConfigPlan
         var template = new KumiryoTemplate { SourceVersion = version };
         foreach (var module in Modules)
             template.Settings[module.Key] = config[module.Key]?.DeepClone() ?? throw new InvalidDataException("配置缺少模块：" + module.Name);
+        if (version == KumiryoInstaller.Version && template.Settings["networkProps"] is JsonObject network)
+            network.Remove("autoSetSystemDns");
         Validate(template); return template;
     }
-    public static KumiryoTemplate Embedded()
+    public static KumiryoTemplate Embedded(string? targetVersion = null)
     {
         using var stream = typeof(KumiryoConfigPlan).Assembly.GetManifestResourceStream("TunHotspot.Core.KumiryoTemplate.json") ?? throw new FileNotFoundException("内置设置模板缺失。");
         var template = JsonSerializer.Deserialize<KumiryoTemplate>(stream, Contract.Json) ?? throw new InvalidDataException("内置模板无效。");
+        if (targetVersion != "0.2.4")
+        {
+            template.SourceVersion = KumiryoInstaller.Version;
+            template.Name = "内置 Kumiryo 0.2.5 设置";
+            template.PreserveExistingRules = true;
+            template.PreserveDnsSelection = true;
+            ((JsonObject)template.Settings["networkProps"]!).Remove("autoSetSystemDns");
+        }
         Validate(template); return template;
     }
     public static void Validate(KumiryoTemplate template)
@@ -133,6 +146,19 @@ public static class KumiryoConfigPlan
             if (rules.Count > 5000) throw new InvalidDataException("规则数量超出上限。");
             foreach (var rule in rules)
                 if (rule is not JsonObject obj || obj["value"] is not JsonValue v || !v.TryGetValue<string>(out var text) || text.Length > 4096 || text.Contains('\n')) throw new InvalidDataException("自定义规则结构无效。");
+        }
+        if (template.SourceVersion == KumiryoInstaller.Version)
+        {
+            var network = (JsonObject)template.Settings["networkProps"]!;
+            if (network.ContainsKey("autoSetSystemDns"))
+                throw new InvalidDataException("Kumiryo 0.2.5 模板不支持旧的自动设置系统 DNS 字段。");
+            if (network.ContainsKey("desktopBypassPrivateRoute") &&
+                (network["desktopBypassPrivateRoute"] is not JsonValue flag || !flag.TryGetValue<bool>(out _)))
+                throw new InvalidDataException("TUN 绕过局域网的开关必须为布尔值。");
+            if (network.ContainsKey("desktopBypassPrivateRouteAddress") &&
+                (network["desktopBypassPrivateRouteAddress"] is not JsonArray addresses ||
+                 addresses.Any(x => x is not JsonValue item || !item.TryGetValue<string>(out _))))
+                throw new InvalidDataException("TUN 绕过地址必须为字符串列表。");
         }
         CheckSecrets(template.Settings, "");
         if (JsonSerializer.Serialize(template, Contract.Json).Length > 1024 * 1024) throw new InvalidDataException("模板过大。");
@@ -153,11 +179,13 @@ public static class KumiryoConfigPlan
             if (uri.UserInfo.Length > 0 || System.Text.RegularExpressions.Regex.IsMatch(uri.Query, @"(?i)(?:token|key|password|auth|secret)=")) throw new InvalidDataException("模板 URL 中含凭据参数，已拒绝导入。");
         }
     }
-    public static string TemplateHash(KumiryoTemplate template) => Contract.Hash(template.Settings.ToJsonString());
+    public static string TemplateHash(KumiryoTemplate template) =>
+        Contract.Hash(template.SourceVersion + "\n" + template.PreserveExistingRules + "\n" +
+            template.PreserveDnsSelection + "\n" + template.Settings.ToJsonString());
     public static List<KumiryoDifference> Differences(JsonObject config, KumiryoTemplate template)
     {
         Validate(template); var list = new List<KumiryoDifference>();
-        foreach (var module in Modules) Diff(config[module.Key], template.Settings[module.Key], "/" + module.Key, list);
+        foreach (var module in Modules) Diff(config[module.Key], DesiredModule(config, template, module.Key), "/" + module.Key, list);
         return list;
     }
     private static void Diff(JsonNode? old, JsonNode? next, string path, List<KumiryoDifference> output)
@@ -171,8 +199,24 @@ public static class KumiryoConfigPlan
     public static JsonObject Merge(JsonObject preferences, KumiryoTemplate template)
     {
         var copy = (JsonObject)preferences.DeepClone(); var config = Settings(copy);
-        foreach (var module in Modules) config[module.Key] = MergeNode(config[module.Key], template.Settings[module.Key]);
+        foreach (var module in Modules) config[module.Key] = MergeNode(config[module.Key], DesiredModule(config, template, module.Key));
         copy["flutter.config"] = config.ToJsonString(); return copy;
+    }
+    private static JsonNode? DesiredModule(JsonObject config, KumiryoTemplate template, string key)
+    {
+        if (key == "globalAddedRules" && template.PreserveExistingRules && config[key] is JsonArray { Count: > 0 })
+            return config[key];
+        var desired = template.Settings[key];
+        if (key != "patchClashConfig" || !template.PreserveDnsSelection ||
+            config[key] is not JsonObject currentPatch || currentPatch["dns"] is not JsonObject currentDns ||
+            desired is not JsonObject patch || patch["dns"] is not JsonObject)
+            return desired;
+        var copy = (JsonObject)patch.DeepClone();
+        var dns = (JsonObject)copy["dns"]!;
+        foreach (string name in DnsSelectionKeys)
+            if (currentDns[name] is JsonArray { Count: > 0 } addresses)
+                dns[name] = addresses.DeepClone();
+        return copy;
     }
     private static JsonNode? MergeNode(JsonNode? old, JsonNode? next)
     {
@@ -197,7 +241,9 @@ public static class KumiryoConfigPlan
         var copy = (JsonObject)current.DeepClone(); var config = Settings(copy); var original = Settings(before);
         foreach (var delta in Differences(original, template))
         {
-            var wanted = At(template.Settings, delta.Path);
+            string module = Parts(delta.Path)[0];
+            var desired = new JsonObject { [module] = DesiredModule(original, template, module)?.DeepClone() };
+            var wanted = At(desired, delta.Path);
             if (!JsonNode.DeepEquals(At(config, delta.Path), wanted)) throw new InvalidOperationException("设置已在注入后发生其他变化，已停止恢复，避免覆盖。");
         }
         foreach (var delta in Differences(original, template)) SetAt(config, delta.Path, At(original, delta.Path), Exists(original, delta.Path));

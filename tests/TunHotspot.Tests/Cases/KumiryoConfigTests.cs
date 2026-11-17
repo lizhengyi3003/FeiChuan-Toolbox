@@ -6,7 +6,8 @@ internal static class KumiryoConfigTests
 {
     public static async Task Run(string testRoot, Action<bool, string> check)
     {
-        var template = KumiryoConfigPlan.Embedded();
+        var template = KumiryoConfigPlan.Embedded("0.2.4");
+        VerifyCurrentVersion(check);
         var previewRoundTrip = Contract.Decode<KumiryoPreview>(Contract.Encode(new KumiryoPreview { NeedsAdministrator = true }));
         check(previewRoundTrip.NeedsAdministrator && !previewRoundTrip.CanApply, "管理员核验状态往返后仍要求授权，不误标普通预检通过");
         check(!new KumiryoOperation().AllowUiStopFallback && Contract.Decode<KumiryoOperation>(Contract.Encode(new KumiryoOperation { AllowUiStopFallback = true })).AllowUiStopFallback, "界面结束兜底默认不授权，预览授权可随操作跨进程保存");
@@ -76,6 +77,38 @@ internal static class KumiryoConfigTests
             if (!full.StartsWith(boundary, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("测试清理边界无效。");
             if (Directory.Exists(full)) Directory.Delete(full, true);
         }
+    }
+    private static void VerifyCurrentVersion(Action<bool, string> check)
+    {
+        var template = KumiryoConfigPlan.Embedded("0.2.5");
+        var preferences = Fixture(template);
+        var config = KumiryoConfigPlan.Settings(preferences);
+        var network = (JsonObject)config["networkProps"]!;
+        network["desktopBypassPrivateRoute"] = false;
+        network["desktopBypassPrivateRouteAddress"] = new JsonArray("192.0.2.0/24");
+        config["globalAddedRules"] = new JsonArray(new JsonObject { ["value"] = "DOMAIN,fixture.invalid,DIRECT" });
+        var dns = (JsonObject)config["patchClashConfig"]!["dns"]!;
+        foreach (string key in KumiryoConfigPlan.DnsSelectionKeys)
+            dns[key] = new JsonArray("192.0.2.53");
+        preferences["flutter.config"] = config.ToJsonString();
+        var merged = KumiryoConfigPlan.Settings(KumiryoConfigPlan.Merge(preferences, template));
+        check(template.SourceVersion == "0.2.5" && !((JsonObject)merged["networkProps"]!).ContainsKey("autoSetSystemDns"),
+            "0.2.5 内置模板不写回已删除的系统 DNS 字段");
+        check(JsonNode.DeepEquals(network["desktopBypassPrivateRoute"], merged["networkProps"]!["desktopBypassPrivateRoute"]) &&
+            JsonNode.DeepEquals(network["desktopBypassPrivateRouteAddress"], merged["networkProps"]!["desktopBypassPrivateRouteAddress"]) &&
+            JsonNode.DeepEquals(config["globalAddedRules"], merged["globalAddedRules"]),
+            "0.2.5 内置模板保留目标的 TUN 绕过和非空附加规则");
+        check(KumiryoConfigPlan.DnsSelectionKeys.All(key => JsonNode.DeepEquals(dns[key], merged["patchClashConfig"]!["dns"]![key])),
+            "0.2.5 保留 Kumiryo 一键优选写入的三组 DNS");
+        var captured = KumiryoConfigPlan.Capture(preferences.ToJsonString(), "0.2.5");
+        check(JsonNode.DeepEquals(network, captured.Settings["networkProps"]) &&
+            KumiryoConfigPlan.Differences(config, captured).Count == 0,
+            "0.2.5 本机模板可无损捕获并预览两项 TUN 绕过设置");
+        check(KumiryoInstaller.ShouldOffer(new()) &&
+            KumiryoInstaller.ShouldOffer(new() { Executable = "kumiryo.exe", Version = "0.2.4" }) &&
+            !KumiryoInstaller.ShouldOffer(new() { Executable = "kumiryo.exe", Version = "0.2.5" }) &&
+            !KumiryoInstaller.ShouldOffer(new() { Executable = "kumiryo.exe", Version = "0.2.6" }),
+            "安装提示仅针对未安装和低于内置版本的客户端");
     }
     private static void Reject(Action run, Action<bool, string> check, string message)
     { try { run(); } catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException) { check(true, message); return; } throw new Exception("未拒绝：" + message); }

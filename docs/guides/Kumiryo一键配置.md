@@ -1,6 +1,6 @@
 # Kumiryo 一键配置
 
-当前产品版本 1.5.9；内置设置模板对应 Kumiryo 0.2.4，两者版本各自维护。
+当前产品版本 1.6.0，提供 Kumiryo 0.2.4 和 0.2.5 的对应模板。
 
 与“启动管理”“兼容热点”并列，全部页面、预览、进度和结果使用 WinUI 3。
 
@@ -9,7 +9,7 @@
 | 模块 | 内容 |
 | --- | --- |
 | overrideDns | DNS 覆写开关 |
-| globalAddedRules | 95 条自定义规则，按模板替换该列表，不重复追加 |
+| globalAddedRules | 0.2.5 内置模板保留目标已有规则，空列表可填入 95 条内置规则；捕获或导入的普通模板按预览替换 |
 | appSettingProps | 应用选项 |
 | networkProps | 系统代理选择、绕过列表、网络和 DNS 选项 |
 | vpnProps | VPN、IPv6 与访问控制 |
@@ -24,14 +24,32 @@
 
 ## 使用
 
-1. 每台电脑先安装并正常登录 Kumiryo。打开本页自动识别当前账户配置与安装目录。
+1. 打开本页后自动识别当前账户配置和安装目录。未安装或版本低于 0.2.5 时会提示，确认后校验并打开内置安装向导。安装或升级完成后重新检测；新用户需在 Kumiryo 登录并初始化配置。
 2. 查看模块核对和变更预览。可以使用内置模板，或捕获本机设置、导入/导出另一份已筛选模板。
 3. 点击“预览并一键注入”，核对“只结束客户端界面”的兜底选项后确认，自动建立备份、退出客户端、写入并重新打开。取消该选项后，如果客户端只收起到托盘，操作会停止并提示手动退出。
 4. 查看持久文件与运行核验明细。已一致时可只核验，也可明确确认后备份并重新加载；连接后可再次核验完整性。
 
 路径来自当前用户目录、运行进程和安装登记。未安装、未初始化、版本不同、模块不完整、端口冲突、进程身份受限或路径包含重解析点时停止自动执行并说明原因。手动选择文件是为定位本机已有配置；不支持网络共享路径。
 
-正常按完整迁移工作的直接目标是 Kumiryo 0.2.4。对其他版本先显示结构/版本问题，不以“版本更高”推定兼容。模板来源、版本、时间、规则数及完整内容均可查看。
+0.2.4 和 0.2.5 使用各自对应的模板；更高版本保留版本提示。安装包与便携包附带同一份 0.2.5 安装器，随项目更新维护固定哈希，未进行 Authenticode 签名。模板版本、规则数和字段可在页面核对。
+本地和 GitHub 使用同一构建入口。发布时按文件名顺序拼接仓库中的安装器分片，核对原始 SHA-256 后再纳入分发清单。
+
+### 0.2.5 设置对照
+
+| Kumiryo 页面项目 | 持久配置和行为 |
+| --- | --- |
+| 覆写 DNS、系统 DNS | `overrideDns`、`networkProps.appendSystemDns`；0.2.5 模板移除旧 `autoSetSystemDns` |
+| DNS 服务商、传输方式 | `patchClashConfig.dns` 的解析服务器及 URL 协议。内置模板保留自定义组合，主解析与代理解析使用阿里、腾讯 DoH |
+| 一键优选 | 0.2.5 将优选结果写入默认、主解析和代理解析三组服务器列表。内置模板保留本机已有列表，空缺时使用模板默认值。首次优选仍在 Kumiryo 中开启 |
+| 高级 DNS 状态、监听、使用 Hosts、使用系统 Hosts、IPv6、遵守规则、PreferH3 | `dns.enable`、`listen`、`use-hosts`、`use-system-hosts`、`ipv6`、`respect-rules`、`prefer-h3` |
+| DNS 模式、FakeIP 范围、FakeIP 过滤 | `dns.enhanced-mode`、`fake-ip-range`、`fake-ip-filter` |
+| 默认域名服务器、域名服务器策略、域名服务器、Fallback、代理域名服务器 | `dns.default-nameserver`、`nameserver-policy`、`nameserver`、`fallback`、`proxy-server-nameserver` |
+| Fallback 过滤 GeoIP、GeoIP 代码、Geosite、IP/掩码、域名 | `dns.fallback-filter` 的 `geoip`、`geoip-code`、`geosite`、`ipcidr`、`domain` |
+| 语言、主题模式、端口、应用 IPv6、局域网代理 | `appSettingProps.locale`、`themeProps.themeMode`、`patchClashConfig.mixed-port`、`patchClashConfig.ipv6`、`patchClashConfig.allow-lan` |
+| 退出时最小化、自动运行、跳过倒计时、自启动、静默启动 | `appSettingProps.minimizeOnExit`、`autoRun`、`skipConnectionCountdown`、`autoLaunch`、`silentLaunch`。自启动的系统登记仍由客户端管理 |
+| 系统代理、排除域名、TUN、栈模式 | `networkProps.systemProxy`、`bypassDomain`、`patchClashConfig.tun.enable`、`stack` |
+| TUN 绕过局域网、TUN 绕过地址 | `networkProps.desktopBypassPrivateRoute`、`desktopBypassPrivateRouteAddress`。默认保留本机值，捕获或导入时可迁移 |
+| 服务模式 | 读取 Kumiryo 辅助服务的实际运行状态，安装和服务由 Kumiryo 自己的向导管理 |
 
 ## 备份、恢复与兜底
 

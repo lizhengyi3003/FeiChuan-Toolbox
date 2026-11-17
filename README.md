@@ -1,6 +1,6 @@
 # 飞船的小工具箱 · FeiChuan Toolbox
 
-当前版本 **1.5.9** · Windows 11 x64 · WinUI 3 / .NET 10
+当前版本 **1.6.0** · Windows 11 x64 · WinUI 3 / .NET 10
 
 [![CI](https://github.com/lizhengyi3003/FeiChuan-Toolbox/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhengyi3003/FeiChuan-Toolbox/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/lizhengyi3003/FeiChuan-Toolbox)](https://github.com/lizhengyi3003/FeiChuan-Toolbox/releases/latest)
@@ -29,7 +29,7 @@ A Windows 11 desktop toolbox for startup inspection and guarded controls, hotspo
 | 单项控制 | 支持范围内启用/禁用、服务启停和启动类型；操作预览、授权、备份、指纹复核和实际回读；不自动争抢其他软件改回的配置 |
 | 分析与来源 | 未分析项自动入队，分类和应用视图，Codex/DSH 来源分组；可选 Codex MCP 或文件交换，分析结果不能执行任意系统命令 |
 | 兼容热点 | 手动开关、设备数、真实状态、隔离工作进程、稳定观察和有限重试；效果受网卡、驱动、TUN 和上游网络影响 |
-| Kumiryo 配置 | 0.2.4 的九模块、95 条自定义规则；预览、DPAPI 备份、独立事务、经授权的界面退出兜底、普通权限重开、逐项核验和冲突保护恢复 |
+| Kumiryo 配置 | 0.2.4 与 0.2.5 的九模块；内置 0.2.5 安装向导、配置预览、DPAPI 备份、独立事务、普通权限重开和冲突保护恢复 |
 | 全局设置 | Acrylic、Mica、MicaAlt、None，主题、系统字体、登录自启、托盘与系统通知；日志按类别、等级、时间和关键词筛选 |
 
 管理员权限不意味着可以绕过 Windows、受保护服务或安全软件。文件设置完整和全部运行效果已生效分别核验；客户端没有提供的内核读回能力会标明待核对。当前证据和限制见 [验收记录](docs/VALIDATION.md)。

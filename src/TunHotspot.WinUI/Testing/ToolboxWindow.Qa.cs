@@ -83,8 +83,8 @@ public sealed partial class ToolboxWindow : Window
                 }
                 finally{menu.Dismiss();}return;
             }
-            if (!new[] { "overview", "entries", "apps", "runtime", "pending", "alerts", "changes", "controls", "groups", "hotspot", "configuration", "settings","codex-origin","dsh-origin" }.Contains(page)) throw new InvalidDataException("未知验证页面。");
-            await Task.Delay(1200); if(!retainSelection)Navigate(page); await Task.Delay(700);
+            if (!new[] { "overview", "entries", "apps", "runtime", "pending", "alerts", "changes", "controls", "groups", "hotspot", "configuration", "settings","codex-origin","dsh-origin","startup-loading" }.Contains(page)) throw new InvalidDataException("未知验证页面。");
+            await Task.Delay(1200); if(!retainSelection&&page!="startup-loading")Navigate(page); await Task.Delay(700);
             if(Environment.GetCommandLineArgs().Contains("reliability-interactive")&&SettingsWorkspace.Content is ScrollViewer logScroll)
             {logScroll.ChangeView(null,logScroll.ScrollableHeight*0.78,null);await Task.Delay(500);page="settings-logs";}
             // RenderTargetBitmap validates this application's actual XAML tree even on a locked desktop.

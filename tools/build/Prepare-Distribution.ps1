@@ -3,6 +3,26 @@ $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $publish=[IO.Path]::GetFullPath($PublishDirectory)
 if(-not(Test-Path -LiteralPath (Join-Path $publish 'TunHotspot.exe'))){throw '未找到已发布的工具箱。'}
+$vendor = Join-Path $root 'installer\vendor\Kumiryo'
+$kumiryo = Get-Content -LiteralPath (Join-Path $vendor 'installer.json') -Raw | ConvertFrom-Json
+$destination = Join-Path $publish 'Installers\Kumiryo'
+[IO.Directory]::CreateDirectory($destination) | Out-Null
+$payload = Join-Path $destination $kumiryo.file
+$partial = Join-Path $destination ([Guid]::NewGuid().ToString('N') + '.tmp')
+try {
+    $output = [IO.File]::Open($partial, [IO.FileMode]::CreateNew)
+    try {
+        $parts = Get-ChildItem -LiteralPath $vendor -File -Filter 'setup.*.part' | Sort-Object Name
+        foreach ($part in $parts) {
+            $inputStream = [IO.File]::OpenRead($part.FullName)
+            try { $inputStream.CopyTo($output) } finally { $inputStream.Dispose() }
+        }
+    } finally { $output.Dispose() }
+    if ((Get-FileHash -LiteralPath $partial).Hash -ne $kumiryo.sha256) { throw '还原的 Kumiryo 安装器 SHA-256 不匹配。' }
+    [IO.File]::Move($partial, $payload, $true)
+} finally {
+    if (Test-Path -LiteralPath $partial) { Remove-Item -LiteralPath $partial }
+}
 if(-not $VCRuntimeDirectory){
     $runtimeCandidates=@(Get-ChildItem -Path 'C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT','C:\Program Files\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT' -Directory -ErrorAction SilentlyContinue)
     $VCRuntimeDirectory=($runtimeCandidates | Sort-Object FullName -Descending | Select-Object -First 1).FullName

@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using SQLitePCL;
 using System.Text.RegularExpressions;
 
 namespace TunHotspot.Core;
@@ -102,25 +103,74 @@ public sealed class ToolboxStore
         catch { db.Dispose(); lease.Dispose(); throw; }
     }
     private SqliteConnection Open() => Connect(_connection);
-    public string CreateVerifiedBackup()
+    public string CreateVerifiedBackup() => CreateVerifiedBackup(default);
+    public string CreateVerifiedBackup(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         using var gate=new Mutex(false,@"Local\TunHotspot.Backup."+Contract.Hash(Root.ToUpperInvariant())[..20]);
         bool held;try{held=gate.WaitOne(0);}catch(AbandonedMutexException){held=true;}
         if(!held)throw new IOException("另一进程正在生成数据库备份，请稍后重试。");
+        string? partial = null;
         try
         {
-        string folder=Path.Combine(Root,"database-backups");KumiryoPrivateFiles.Directory(folder);
-        string target=Path.Combine(folder,$"toolbox-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.db");
-        string partial=Path.Combine(folder,"partial-"+Guid.NewGuid().ToString("N")+".db");
-        using(var source=Open())using(var backup=new SqliteConnection(new SqliteConnectionStringBuilder{DataSource=partial,Pooling=false}.ToString()))
-        {backup.Open();source.BackupDatabase(backup);using var check=backup.CreateCommand();check.CommandText="PRAGMA integrity_check";if(check.ExecuteScalar() as string!="ok")throw new InvalidDataException("备份完整性检查失败，未将其列为可恢复备份。");check.CommandText="PRAGMA journal_mode=DELETE";check.ExecuteNonQuery();}
-        File.Move(partial,target);
-        new DiagnosticLog(Root).Event("数据库","信息","已生成并核验数据库备份",Path.GetFileName(target));
-        // Keep all originals/repair archives; only retain the newest five owned online backups.
-        foreach(string old in Directory.GetFiles(folder,"toolbox-*.db").OrderDescending().Skip(5))try{File.Delete(old);}catch(IOException){}
-        return target;
+            string folder = Path.Combine(Root, "database-backups");
+            KumiryoPrivateFiles.Directory(folder);
+            string target = Path.Combine(folder, $"toolbox-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.db");
+            partial = Path.Combine(folder, $"partial-{Guid.NewGuid():N}.db");
+            using (var source = Open())
+            using (var backup = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = partial, Pooling = false }.ToString()))
+            {
+                backup.Open();
+                if (cancellationToken.CanBeCanceled) CopyBackupPages(source, backup, cancellationToken);
+                else source.BackupDatabase(backup);
+                using var check = backup.CreateCommand();
+                check.CommandText = "PRAGMA integrity_check";
+                if (cancellationToken.CanBeCanceled)
+                    raw.sqlite3_progress_handler(backup.Handle!, 1000, _ => cancellationToken.IsCancellationRequested ? 1 : 0, null);
+                try
+                {
+                    if (check.ExecuteScalar() as string != "ok")
+                        throw new InvalidDataException("备份完整性检查失败，未将其列为可恢复备份。");
+                }
+                finally
+                {
+                    if (cancellationToken.CanBeCanceled)
+                        raw.sqlite3_progress_handler(backup.Handle!, 0, null, null);
+                }
+                check.CommandText = "PRAGMA journal_mode=DELETE";
+                check.ExecuteNonQuery();
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(partial, target);
+            partial = null;
+            new DiagnosticLog(Root).Event("数据库", "信息", "已生成并核验数据库备份", Path.GetFileName(target));
+            foreach (string old in Directory.GetFiles(folder, "toolbox-*.db").OrderDescending().Skip(5))
+                try { File.Delete(old); } catch (IOException) { }
+            return target;
         }
-        finally{gate.ReleaseMutex();}
+        catch (SqliteException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+        finally
+        {
+            try { if (partial is not null) File.Delete(partial); }
+            catch (IOException) { }
+            finally { gate.ReleaseMutex(); }
+        }
+    }
+    private static void CopyBackupPages(SqliteConnection source, SqliteConnection backup, CancellationToken cancellationToken)
+    {
+        using var copy = raw.sqlite3_backup_init(backup.Handle!, "main", source.Handle!, "main");
+        if (copy.IsInvalid)
+            SqliteException.ThrowExceptionForRC(raw.sqlite3_errcode(backup.Handle!), backup.Handle);
+        int result;
+        do
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            result = raw.sqlite3_backup_step(copy, 64);
+        } while (result == raw.SQLITE_OK);
+        SqliteException.ThrowExceptionForRC(result, backup.Handle);
     }
     private void Execute(string sql, params (string Key, object? Value)[] values)
     {

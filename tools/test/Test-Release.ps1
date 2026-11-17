@@ -22,6 +22,12 @@ foreach ($binary in @('TunHotspot.exe', 'TunHotspot.Core.dll', 'Engine\TunHotspo
     if ([Diagnostics.FileVersionInfo]::GetVersionInfo($file).ProductVersion.Split('+')[0] -ne $version) { throw "程序集版本不一致：$binary" }
 }
 if ((Get-Content -LiteralPath (Resolve-ReleaseFile 'app\使用说明.txt') -TotalCount 1) -notmatch [regex]::Escape($version)) { throw '包内使用说明版本未对齐。' }
+$kumiryo = Get-Content -LiteralPath (Join-Path $root 'installer\vendor\Kumiryo\installer.json') -Raw | ConvertFrom-Json
+$kumiryoSetup = Resolve-ReleaseFile ('app\Installers\Kumiryo\' + $kumiryo.file)
+if ((Get-FileHash -LiteralPath $kumiryoSetup).Hash -ne $kumiryo.sha256 -or
+    [Diagnostics.FileVersionInfo]::GetVersionInfo($kumiryoSetup).ProductVersion.Trim() -ne $kumiryo.version) {
+    throw '内置 Kumiryo 安装器的版本或 SHA-256 不匹配。'
+}
 $hashes = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($line in Get-Content -LiteralPath (Resolve-ReleaseFile 'app\files.sha256')) {
     if ($line -notmatch '^([a-f0-9]{64})  (.+)$') { throw '发布清单格式无效。' }
