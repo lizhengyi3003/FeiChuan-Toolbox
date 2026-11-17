@@ -3,7 +3,6 @@ $ErrorActionPreference='Stop'
 if([IO.Path]::GetFileName($ApplicationPath) -ne 'TunHotspot.exe'){throw '仅允许本软件 QA 进程。'}
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
-. (Join-Path $PSScriptRoot 'UiAutomation.ps1')
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type @'
@@ -15,13 +14,15 @@ public static class ToolboxTrayUiNative {
  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc callback,IntPtr value);
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window,out uint process);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr window,StringBuilder text,int count);
+ [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window,int command);
  [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr window,IntPtr region);
  [DllImport("gdi32.dll")] private static extern IntPtr CreateRectRgn(int left,int top,int right,int bottom);
  [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr region);
  [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
  [DllImport("user32.dll")] public static extern bool GetCursorPos(out Point point);
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
- public static bool AnchorIsClipped(IntPtr window){var region=CreateRectRgn(0,0,0,0);if(region==IntPtr.Zero)return false;try{return GetWindowRgn(window,region)==1;}finally{DeleteObject(region);}}
+ public static bool MenuRegionIsVisible(IntPtr window){var region=CreateRectRgn(0,0,0,0);if(region==IntPtr.Zero)return false;try{return GetWindowRgn(window,region)>1;}finally{DeleteObject(region);}}
+ public static void HideFixtureMainWindow(int process,IntPtr menu){EnumWindows((window,value)=>{uint owner;GetWindowThreadProcessId(window,out owner);var title=new StringBuilder(512);GetWindowText(window,title,512);if(owner==process&&window!=menu&&title.ToString()=="飞船的小工具箱")ShowWindow(window,0);return true;},IntPtr.Zero);}
  public static IntPtr Find(int process){IntPtr found=IntPtr.Zero;EnumWindows((window,value)=>{uint owner;GetWindowThreadProcessId(window,out owner);var title=new StringBuilder(512);GetWindowText(window,title,512);if(owner==process&&title.ToString()=="飞船的小工具箱 · 托盘菜单"){found=window;return false;}return true;},IntPtr.Zero);return found;}
 }
 '@
@@ -33,21 +34,29 @@ try{
     $deadline=(Get-Date).AddSeconds(10);$handle=[IntPtr]::Zero
     do{Start-Sleep -Milliseconds 150;$handle=[ToolboxTrayUiNative]::Find($process.Id)}while($handle -eq [IntPtr]::Zero -and (Get-Date) -lt $deadline)
     if($handle -eq [IntPtr]::Zero){throw '未找到 WinUI 3 托盘窗口。'}
-    $desktop=[Windows.Automation.AutomationElement]::RootElement
-    $settingsCondition=[Windows.Automation.AndCondition]::new(
-        [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ProcessIdProperty,$process.Id),
-        [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty,'TrayMenu.settings'))
+    $settingsCondition=[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty,'TrayMenu.settings')
     $deadline=(Get-Date).AddSeconds(10);$settings=$null
-    do{Start-Sleep -Milliseconds 150;$settings=Find-ProcessUiElement -OwnerProcessId $process.Id -Condition $settingsCondition}while(-not $settings -and (Get-Date) -lt $deadline)
+    do{
+        Start-Sleep -Milliseconds 150
+        try{
+            $window=[Windows.Automation.AutomationElement]::FromHandle($handle)
+            $settings=$window.FindFirst([Windows.Automation.TreeScope]::Descendants,$settingsCondition)
+        }catch [Windows.Automation.ElementNotAvailableException]{}
+    }while(-not $settings -and (Get-Date) -lt $deadline)
     if(-not $settings){throw '原生菜单未完成加载。'}
-    $result.AnchorIsClipped=[ToolboxTrayUiNative]::AnchorIsClipped($handle)
-    if(-not $result.AnchorIsClipped){throw '托盘菜单锚点仍可绘制。'}
-    $window=[Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($settings)
+    $result.MenuRegionIsVisible=[ToolboxTrayUiNative]::MenuRegionIsVisible($handle)
+    if(-not $result.MenuRegionIsVisible){throw '托盘窗口未直接绘制菜单区域。'}
     $items=$window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::MenuItem))
     $names=@($items | ForEach-Object {$_.Current.Name})
     $result.Buttons=$names
     if(@($names | Where-Object {$_ -match '^(打开工具箱|兼容热点|Kumiryo 一键配置|全局扫描（管理员）|通知与关注.*|暂停监测|恢复监测|设置|退出托盘)$'}).Count -ne 8){throw '菜单内容缺失。'}
+    $rect=$window.Current.BoundingRectangle
+    foreach($item in $items){
+        $bounds=$item.Current.BoundingRectangle
+        if($bounds.Left -lt $rect.Left -or $bounds.Top -lt $rect.Top -or $bounds.Right -gt $rect.Right -or $bounds.Bottom -gt $rect.Bottom){throw '菜单项超出其自身窗口。'}
+    }
     if($ScreenshotPath){
+        [ToolboxTrayUiNative]::HideFixtureMainWindow($process.Id,$handle)
         $savedCursor=[ToolboxTrayUiNative+Point]::new()
         [void][ToolboxTrayUiNative]::GetCursorPos([ref]$savedCursor)
         $exit=($items | Where-Object {$_.Current.AutomationId -eq 'TrayMenu.exit'} | Select-Object -First 1).Current.BoundingRectangle

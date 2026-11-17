@@ -15,14 +15,14 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
     private readonly bool _qa;
     private readonly DispatcherTimer _poll = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private readonly List<Button> _actions = [];
-    private readonly Button _apply, _restore, _recover, _exportLog;
+    private readonly Button _apply, _restore, _recover, _exportLog, _install;
     private KumiryoTemplate _template;
     private KumiryoTarget? _target;
     private KumiryoPreview? _preview;
     private string? _job;
     private Process? _worker;
     private DateTimeOffset _launchTime;
-    private bool _busy, _loaded, _disposed;
+    private bool _busy, _loaded, _disposed, _customTarget;
     private sealed record Row(string Title, string Detail);
     private sealed record HistoryRow(KumiryoReport Report)
     { public string Label => $"{Report.Started.ToLocalTime():MM-dd HH:mm} · {Report.Phase} · {Report.Id[..8]}"; }
@@ -30,17 +30,27 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
     public ConfigurationPage(Window owner, bool qa = false)
     {
         _owner = owner; _qa = qa; InitializeComponent();
-        try { _template = qa ? KumiryoConfigPlan.Embedded() : KumiryoConfiguration.CurrentTemplate(); }
-        catch (Exception ex) { _template = KumiryoConfigPlan.Embedded(); Tell("本机模板不可读，已使用内置模板", KumiryoConfiguration.SafeError(ex), InfoBarSeverity.Warning); }
+        _template = KumiryoConfigPlan.Embedded();
         var buttons = new FlowPanel();
-        Add(buttons, "重新检测", "Configuration.Refresh", () => Check());
+        Add(buttons, "重新检测", "Configuration.Refresh", async () =>
+        {
+            if (!_customTarget) await DetectClientAndTemplate();
+            await Check();
+        });
+        _install = Add(buttons, $"安装或升级 Kumiryo {KumiryoInstaller.Version}", "Configuration.Install", OfferInstallation);
+        _install.Visibility = Visibility.Collapsed;
         Add(buttons, "管理员核验", "Configuration.AdminCheck", AdministratorCheck);
         _apply = Add(buttons, "预览并一键注入", "Configuration.Apply", Apply);
         Add(buttons, "核验完整性", "Configuration.Verify", Verify);
         Add(buttons, "从本机更新模板", "Configuration.Capture", CaptureTemplate);
         Add(buttons, "导入模板", "Configuration.Import", ImportTemplate);
         Add(buttons, "导出模板", "Configuration.Export", ExportTemplate);
-        Add(buttons, "使用内置模板", "Configuration.Reset", async () => { _template = KumiryoConfigPlan.Embedded(); if (!_qa) KumiryoConfiguration.SaveTemplate(_template); await Check(); });
+        Add(buttons, "使用内置模板", "Configuration.Reset", async () =>
+        {
+            _template = KumiryoConfigPlan.Embedded(_target?.Version);
+            if (!_qa) KumiryoConfiguration.SaveTemplate(_template);
+            await Check();
+        });
         ActionHost.Content = buttons;
         var historyActions = new FlowPanel();
         _restore = Add(historyActions, "恢复所选备份", "Configuration.Restore", Restore);
@@ -51,7 +61,14 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
         _poll.Tick += async (_, _) => await Poll();
         Loaded += async (_, _) =>
         {
-            if (_loaded || _disposed) return; _loaded = true; await Check();
+            if (_loaded || _disposed) return;
+            _loaded = true;
+            if (!_qa)
+            {
+                try { await DetectClientAndTemplate(); }
+                catch (Exception ex) { Tell("本机检测未完成", KumiryoConfiguration.SafeError(ex), InfoBarSeverity.Warning); }
+            }
+            await Check();
             if (_disposed) return;
             RefreshHistory();
             if (!_qa && KumiryoConfiguration.History().FirstOrDefault(x => !x.Finished) is KumiryoReport pending)
@@ -60,7 +77,54 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
                 if (KumiryoConfiguration.WorkerAlive(pending)) { SetBusy(true); _poll.Start(); }
                 else Tell("发现中断的操作", "请在下方选择该记录并恢复；新注入会等待这条记录处理完毕。", InfoBarSeverity.Warning);
             }
+            else if (!_qa && _target is not null && KumiryoInstaller.ShouldOffer(_target))
+            {
+                try { await OfferInstallation(); }
+                catch (Exception ex) { Tell("Kumiryo 安装未完成", KumiryoConfiguration.SafeError(ex), InfoBarSeverity.Error); }
+            }
         };
+    }
+    private async Task DetectClientAndTemplate()
+    {
+        _target = await Task.Run(KumiryoConfiguration.Discover);
+        var builtIn = KumiryoConfigPlan.Embedded(_target.Version);
+        _template = builtIn;
+        var preferred = await Task.Run(() => KumiryoConfiguration.CurrentTemplate(_target.Version));
+        if (preferred.SourceVersion == "0.2.4" && builtIn.SourceVersion != preferred.SourceVersion &&
+            KumiryoConfigPlan.TemplateHash(preferred) == KumiryoConfigPlan.TemplateHash(KumiryoConfigPlan.Embedded("0.2.4")))
+            return;
+        _template = preferred;
+    }
+    private async Task OfferInstallation()
+    {
+        if (_qa || _busy || _disposed || _target is null || !KumiryoInstaller.ShouldOffer(_target)) return;
+        if (KumiryoConfiguration.History().Any(x => !x.Finished || x.BackupReady && x.WriteStarted && !x.Success && !x.Restored))
+        {
+            Tell("已有配置操作待处理", "请先完成或恢复之前的配置操作，再安装或升级 Kumiryo。", InfoBarSeverity.Warning);
+            return;
+        }
+        SetBusy(true);
+        try
+        {
+            string action = string.IsNullOrEmpty(_target.Executable) ? "安装" : "升级";
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot, Title = $"{action} Kumiryo {KumiryoInstaller.Version}",
+                Content = "工具箱将校验并启动随包提供的 Kumiryo 安装向导。升级可能短暂中断代理或热点。",
+                PrimaryButtonText = $"开始{action}", CloseButtonText = "稍后", DefaultButton = ContentDialogButton.Close
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary || _disposed) return;
+            StatusTitle.Text = "正在等待 Kumiryo 安装向导完成";
+            _target = await Task.Run(KumiryoInstaller.InstallOrUpdateAsync);
+            if (_disposed) return;
+            _customTarget = false;
+            await DetectClientAndTemplate();
+            Tell("Kumiryo 安装完成", "如尚未登录，请先在 Kumiryo 初始化后重新检测设置。", InfoBarSeverity.Success);
+        }
+        finally
+        {
+            if (!_disposed) { SetBusy(false); await Check(); }
+        }
     }
     private Button Add(Panel panel, string label, string id, Func<Task> run)
     {
@@ -82,6 +146,8 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
         }
         else _preview = await Task.Run(() => { _target ??= KumiryoConfiguration.Discover(); return KumiryoConfiguration.Preview(_target, _template); });
         if (_disposed) return;
+        _install.Visibility = !_qa && _target is not null && KumiryoInstaller.ShouldOffer(_target)
+            ? Visibility.Visible : Visibility.Collapsed;
         ExecutablePath.Text = _target?.Executable ?? ""; PreferencesPath.Text = _target?.Preferences ?? "";
         BlockingReasons.Text = string.Join("\n", _preview.Blocks.Select(x => "• " + x));
         StatusTitle.Text = _preview.NeedsAdministrator ? "需要管理员核验" : !_preview.CanApply ? "需要先处理预检问题" : _preview.Differences.Count == 0 ? "九个设置模块已经一致" : $"发现 {_preview.Differences.Count} 处设置差异";
@@ -106,7 +172,9 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
         bool same = _preview.Differences.Count == 0;
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock { Text = $"将完整迁移 9 个设置模块、{_preview.Rules} 条规则，处理 {_preview.Differences.Count} 处差异。", TextWrapping = TextWrapping.Wrap });
-        content.Children.Add(new TextBlock { Text = "目标电脑已有的同类设置和自定义规则会按预览替换；账号、登录凭据、订阅及当前订阅选择保留。窗口位置会使用模板中的自动定位设置。", TextWrapping = TextWrapping.Wrap });
+        string rulePolicy = _template.PreserveExistingRules ? "目标电脑已有自定义规则时保留原规则列表。" : "自定义规则按预览替换。";
+        string dnsPolicy = _template.PreserveDnsSelection ? "保留目标已有的 DNS 服务器选择，包括 Kumiryo 保存的一键优选结果。" : "";
+        content.Children.Add(new TextBlock { Text = $"目标设置按预览更新。{rulePolicy}{dnsPolicy}账号、登录凭据、订阅及当前订阅选择保留。", TextWrapping = TextWrapping.Wrap });
         content.Children.Add(new TextBlock { Text = "执行时会自动退出并重新打开 Kumiryo，代理可能短暂中断。先建立当前用户加密备份，失败尝试恢复；后续设置冲突会停止恢复并保留记录。", TextWrapping = TextWrapping.Wrap });
         var uiFallback = UiStopFallbackOption(); content.Children.Add(uiFallback);
         var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = same ? "设置已一致，可核验或重新加载" : "确认 Kumiryo 配置变更", PrimaryButtonText = same ? "备份后重新加载" : "确认并执行", SecondaryButtonText = same ? "仅核验" : "", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close, Content = content };
@@ -283,12 +351,12 @@ public sealed partial class ConfigurationPage : UserControl, IDisposable
     private void InitPicker(object picker) => WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(_owner));
     private async void ChooseExe_Click(object sender, RoutedEventArgs e)
     {
-        try { var picker = new FileOpenPicker(); picker.FileTypeFilter.Add(".exe"); InitPicker(picker); var file = await picker.PickSingleFileAsync(); if (file is null) return; _target ??= KumiryoConfiguration.Discover(); _target.Executable = file.Path; await Check(); }
+        try { var picker = new FileOpenPicker(); picker.FileTypeFilter.Add(".exe"); InitPicker(picker); var file = await picker.PickSingleFileAsync(); if (file is null) return; _target ??= KumiryoConfiguration.Discover(); _target.Executable = file.Path; _customTarget = true; await Check(); }
         catch (Exception ex) { Tell("无法选择程序", KumiryoConfiguration.SafeError(ex), InfoBarSeverity.Error); }
     }
     private async void ChoosePreferences_Click(object sender, RoutedEventArgs e)
     {
-        try { var picker = new FileOpenPicker(); picker.FileTypeFilter.Add(".json"); InitPicker(picker); var file = await picker.PickSingleFileAsync(); if (file is null) return; _target ??= KumiryoConfiguration.Discover(); _target.Preferences = file.Path; await Check(); }
+        try { var picker = new FileOpenPicker(); picker.FileTypeFilter.Add(".json"); InitPicker(picker); var file = await picker.PickSingleFileAsync(); if (file is null) return; _target ??= KumiryoConfiguration.Discover(); _target.Preferences = file.Path; _customTarget = true; await Check(); }
         catch (Exception ex) { Tell("无法选择配置", KumiryoConfiguration.SafeError(ex), InfoBarSeverity.Error); }
     }
     private void Tell(string title, string detail, InfoBarSeverity severity) { Notice.Title = title; Notice.Message = detail; Notice.Severity = severity; Notice.IsOpen = true; }

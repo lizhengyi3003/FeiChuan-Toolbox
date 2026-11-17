@@ -94,14 +94,13 @@ public partial class App : Application
                 _installerMutex = new Mutex(false, "TunHotspot.WinUI.Running");
                 _installerExit = SetupGate.WatchForExit(() => dispatcher.TryEnqueue(RequestUpdateExit));
                 NotificationBridge.Invoked += id => dispatcher.TryEnqueue(() => OpenNotification(id));
-                NotificationBridge.Register();
             }
             await OpenMainWindow(commandLine, qaIndex);
         }
         catch (Exception ex)
         {
             if (_updateRequested) RequestUpdateExit();
-            else ShowLaunchFailure(ex, commandLine, qaIndex);
+            else if (_window?.IsShuttingDown != true) ShowLaunchFailure(ex, commandLine, qaIndex);
         }
     }
 
@@ -109,8 +108,6 @@ public partial class App : Application
     {
         if (_opening || _updateRequested) return;
         _opening = true;
-        Window? loadingWindow = null;
-        bool canCloseLoadingWindow = false;
         try
         {
             long started = Stopwatch.GetTimestamp();
@@ -124,53 +121,36 @@ public partial class App : Application
             }
             if (SetupGate.IsBlocked(Environment.ProcessPath!)) { RequestUpdateExit(); return; }
             var previous = _window;
-            var loading = Task.Run(() => ToolboxWindow.LoadStartupData(qa));
-            previous?.TrackDatabaseWork(loading);
-            if (!qa && !quiet && previous is null && _launchFailure is null &&
-                await Task.WhenAny(loading, Task.Delay(400)) != loading && !_updateRequested)
+            ToolboxWindow? provisional = null;
+            IProgress<(int Step, string Stage)>? progress = null;
+            bool qaLoading = qa && page == "startup-loading";
+            if ((!qa || qaLoading) && !quiet && previous is null && _launchFailure is null)
             {
-                loadingWindow = new Window
-                {
-                    Title = "飞船的小工具箱",
-                    Content = new Microsoft.UI.Xaml.Controls.StackPanel
-                    {
-                        Padding = new Thickness(28),
-                        Spacing = 16,
-                        Children =
-                        {
-                            new Microsoft.UI.Xaml.Controls.TextBlock { Text = "正在读取并核验启动数据…" },
-                            new Microsoft.UI.Xaml.Controls.ProgressBar { IsIndeterminate = true }
-                        }
-                    }
-                };
-                var window = loadingWindow;
-                window.AppWindow.Resize(new Windows.Graphics.SizeInt32(480, 180));
-                window.AppWindow.Closing += (_, args) =>
-                {
-                    if (!canCloseLoadingWindow)
-                    {
-                        args.Cancel = true;
-                        window.AppWindow.Hide();
-                    }
-                };
-                window.Activate();
+                provisional = new ToolboxWindow(ToolboxWindow.PendingStartup(qa), false, qa, startupLoading: true);
+                RegisterWindow(provisional);
+                ActivateMainWindow();
+                progress = new Progress<(int Step, string Stage)>(stage => provisional.ReportStartupStage(stage.Step, stage.Stage));
             }
+            var loading = Task.Run(async () =>
+            {
+                if (qaLoading) await Task.Delay(3500).ConfigureAwait(false);
+                return ToolboxWindow.LoadStartupData(qa, progress);
+            });
+            (provisional ?? previous)?.TrackDatabaseWork(loading);
+            if (qaLoading && provisional is not null) _ = provisional.CaptureForQa(page);
             var data = await loading;
-            loadingWindow?.AppWindow.Hide();
             if (_updateRequested || SetupGate.IsBlocked(Environment.ProcessPath!)) { RequestUpdateExit(); return; }
-            if (previous?.IsShuttingDown == true) return;
+            if ((provisional ?? previous)?.IsShuttingDown == true) return;
             double dataMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             quiet &= !_showWhenReady;
             _showWhenReady = false;
-            var next = new ToolboxWindow(data, quiet, qa);
-            _window = next;
-            next.Closed += (_, _) =>
+            var next = provisional ?? new ToolboxWindow(data, quiet, qa);
+            if (provisional is null)
             {
-                if (!ReferenceEquals(_window, next)) return;
-                _window = null;
-                ReleaseApplicationResources();
-            };
-            if (!quiet) ActivateMainWindow();
+                RegisterWindow(next);
+                if (!quiet) ActivateMainWindow();
+            }
+            else provisional.CompleteStartup(data);
             if (previous is not null) await previous.ShutdownAsync(forRetry: true);
             var previousFailure = _launchFailure; _launchFailure = null;
             previousFailure?.Close();
@@ -179,22 +159,31 @@ public partial class App : Application
             AppLog.Write("toolbox-opened", new { quiet, startupAvailable = data.Store is not null, dataMs, readyMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds });
             if (_updateRequested) { await next.ShutdownAsync(forUpdate: true); return; }
             next.DispatcherQueue.TryEnqueue(next.StartBackgroundWork);
-            if (qa) _ = next.CaptureForQa(page == "startup-error" ? "overview" : page);
+            if (qa && !qaLoading) _ = next.CaptureForQa(page == "startup-error" ? "overview" : page);
         }
         finally
         {
-            canCloseLoadingWindow = true;
-            loadingWindow?.Close();
             _opening = false;
             if (_updateRequested) RequestUpdateExit();
         }
     }
 
+    private void RegisterWindow(ToolboxWindow window)
+    {
+        _window = window;
+        window.Closed += (_, _) =>
+        {
+            if (!ReferenceEquals(_window, window)) return;
+            _window = null;
+            ReleaseApplicationResources();
+        };
+    }
+
     private void RequestUpdateExit()
     {
         _updateRequested = true;
-        if (_opening) return;
         if (_window is not null) { _ = _window.ShutdownAsync(forUpdate: true); return; }
+        if (_opening) return;
         if (_launchFailure is not null) _launchFailure.Close();
         else { ReleaseApplicationResources(); Exit(); }
     }
@@ -208,7 +197,8 @@ public partial class App : Application
 
     private void OpenNotification(string id)
     {
-        if (_window is null) { _pendingEvent = id; return; }
+        if (_window is null || _window.StartupLoading) { _pendingEvent = id; return; }
+        if (_window.IsShuttingDown) return;
         _pendingEvent = null;
         try { _window.OpenEvent(id); }
         catch (Exception ex) { AppLog.Write("activation-error", new { Details = ex.ToString() }); _window.ReportError(ex.Message); }
@@ -217,6 +207,7 @@ public partial class App : Application
     private void ShowLaunchFailure(Exception error, string[] commandLine, int qaIndex)
     {
         AppLog.Write("launch-error", new { pid = Environment.ProcessId, error.Message, Type = error.GetType().FullName, Details = error.ToString() });
+        if (_window?.StartupLoading == true) _window.AppWindow.Hide();
         if (_launchFailure is null)
         {
             _launchFailure = new LaunchFailureWindow(async () =>
@@ -233,7 +224,8 @@ public partial class App : Application
             _launchFailure.Closed += (_, _) =>
             {
                 _launchFailure = null;
-                if (_window is null) { ReleaseApplicationResources(); Exit(); }
+                if (_window is { StartupLoading: true } pending) _ = pending.ShutdownAsync();
+                else if (_window is null) { ReleaseApplicationResources(); Exit(); }
             };
         }
         _launchFailure.SetError(error);
@@ -250,8 +242,8 @@ public partial class App : Application
 
     private void ActivateMainWindow()
     {
-        if (_window is null && _launchFailure is not null) { _launchFailure.Activate(); return; }
-        if (_window is null) return;
+        if (_launchFailure is not null && (_window is null || _window.StartupLoading)) { _launchFailure.Activate(); return; }
+        if (_window is null || _window.IsShuttingDown) return;
         _window.Activate();
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(_window);
         ShowWindow(handle, 9);

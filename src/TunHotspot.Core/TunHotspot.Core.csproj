@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="Configuration\Kumiryo\Resources\KumiryoTemplate.json" LogicalName="TunHotspot.Core.KumiryoTemplate.json" />
+    <EmbeddedResource Include="..\..\installer\vendor\Kumiryo\installer.json" LogicalName="TunHotspot.Core.KumiryoInstaller.json" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="System.Management" />
     <PackageReference Include="System.Diagnostics.EventLog" />

@@ -118,6 +118,13 @@ try
  var badSource=Path.Combine(root,"bad-migration");Directory.CreateDirectory(badSource);File.WriteAllText(Path.Combine(badSource,"toolbox.db"),"broken");var badTarget=Path.Combine(root,"bad-target");
  try{UserDataMigration.Ensure(badTarget,badSource);throw new Exception("bad migration accepted");}catch(Exception ex)when(ex is Microsoft.Data.Sqlite.SqliteException or InvalidDataException){Check(!File.Exists(Path.Combine(badTarget,"toolbox.db")),"损坏旧库不会被当成空库迁移");}
  string verifiedBackup=store.CreateVerifiedBackup();using(var backupDb=new Microsoft.Data.Sqlite.SqliteConnection("Data Source="+verifiedBackup)){backupDb.Open();using var check=backupDb.CreateCommand();check.CommandText="PRAGMA integrity_check";Check(check.ExecuteScalar() as string=="ok","在线备份通过完整性核验");}
+ using(var backupStop=new CancellationTokenSource())
+ {
+  Check(File.Exists(store.CreateVerifiedBackup(backupStop.Token)),"可取消的分批备份通过完整性核验");
+  backupStop.Cancel();
+  try { store.CreateVerifiedBackup(backupStop.Token); throw new Exception("已取消的备份仍启动"); }
+  catch(OperationCanceledException) { Check(true,"退出时跳过尚未启动的后台数据库备份"); }
+ }
  var restoreRoot=Path.Combine(root,"restore-fixture");var restoreStore=new ToolboxStore(restoreRoot);restoreStore.Set("restoreMarker","before");restoreStore.CreateVerifiedBackup();File.WriteAllText(Path.Combine(restoreRoot,"toolbox.db"),"damaged fixture");string originalArchive=DatabaseRecovery.RestoreLatest(restoreRoot);
  Check(new ToolboxStore(restoreRoot,true).Get<string>("restoreMarker")=="before"&&File.ReadAllText(Path.Combine(originalArchive,"toolbox.db"))=="damaged fixture","恢复有效备份并完整保留损坏原件");
  Check(NetworkHealth.TryLocal("127.0.0.1:7890",out int proxyPort)&&proxyPort==7890&&!NetworkHealth.TryLocal("127.0.0.2:7890",out _)&&!NetworkHealth.TryLocal("[::1]:7890",out _)&&!NetworkHealth.TryLocal("http=proxy.example:8080;https=proxy.example:8080",out _),"残留代理修复仅接受实际探测的 IPv4 本机地址，不扩大到其他代理");

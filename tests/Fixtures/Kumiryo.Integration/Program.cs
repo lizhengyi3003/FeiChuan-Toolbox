@@ -26,7 +26,7 @@ try
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!); File.Copy(source, destination);
     }
     File.WriteAllBytes(Path.Combine(root, "KumiryoCore.exe"), [0]); // Presence fixture only; never executed.
-    var template = KumiryoConfigPlan.Embedded(); template.Name = "隔离原生窗口验证模板";
+    var template = KumiryoConfigPlan.Embedded("0.2.4"); template.Name = "隔离原生窗口验证模板";
     template.Settings["patchClashConfig"]!["mixed-port"] = 0;
     template.Settings["patchClashConfig"]!["dns"]!["listen"] = "127.0.0.1:0";
     template.Settings["patchClashConfig"]!["tun"]!["enable"] = false;

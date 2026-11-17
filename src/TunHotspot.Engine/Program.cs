@@ -29,7 +29,9 @@ internal static class Program
             }
             if (args.Length == 1 && args[0] == "--kumiryo-check")
             {
-                var template = KumiryoConfigPlan.Embedded(); var preview = KumiryoConfiguration.Preview(KumiryoConfiguration.Discover(), template);
+                var target = KumiryoConfiguration.Discover();
+                var template = KumiryoConfigPlan.Embedded(target.Version);
+                var preview = KumiryoConfiguration.Preview(target, template);
                 Console.WriteLine(Contract.Encode(new { preview.Target.Version, template.SourceVersion, Modules = KumiryoConfigPlan.Modules.Length, preview.Rules, Differences = preview.Differences.Count, preview.CanApply, preview.Blocks, preview.Checks }));
                 return preview.CanApply ? 0 : 1;
             }

@@ -10,7 +10,8 @@ internal sealed class TrayIcon : IDisposable
     private readonly uint _taskbar;
     private readonly uint _exitForUpdate;
     private nint _icon;
-    private bool _disposed;
+    private bool _disposed, _menuOpen;
+    private string _tip = "飞船的小工具箱 · 启动与后台监测";
     internal event Action<string>? Command;
     internal event Action<int,int>? MenuRequested;
     internal event Action? SessionEnding;
@@ -37,9 +38,20 @@ internal sealed class TrayIcon : IDisposable
             throw;
         }
     }
-    private NotifyData Data(string tip="飞船的小工具箱 · 启动与后台监测") => new() { Size=(uint)Marshal.SizeOf<NotifyData>(), Window=_window, Id=71, Flags=1|2|4|0x20|0x80, Callback=Callback, Icon=_icon, Tip=tip[..Math.Min(127,tip.Length)], Guid=new Guid("76D7FD9A-1281-47E6-86C0-BCA9368C1217") };
+    private NotifyData Data() => new() { Size=(uint)Marshal.SizeOf<NotifyData>(), Window=_window, Id=71, Flags=1|2|4|0x20|(_menuOpen?0u:0x80u), Callback=Callback, Icon=_icon, Tip=_menuOpen?"":_tip[..Math.Min(127,_tip.Length)], Guid=new Guid("76D7FD9A-1281-47E6-86C0-BCA9368C1217") };
     private void Add(){var data=Data();if(!Shell_NotifyIcon(0,ref data))throw new InvalidOperationException("系统托盘图标创建失败。");data.Version=4;Shell_NotifyIcon(4,ref data);}
-    internal void Update(string tip){if(_disposed)return;var data=Data(tip);Shell_NotifyIcon(1,ref data);}
+    internal void Update(string tip)
+    {
+        _tip = tip;
+        if (!_menuOpen) Modify();
+    }
+    internal void SetMenuOpen(bool open)
+    {
+        if (_menuOpen == open) return;
+        _menuOpen = open;
+        Modify();
+    }
+    private void Modify(){if(_disposed)return;var data=Data();Shell_NotifyIcon(1,ref data);}
     private nint Procedure(nint window,uint message,nint wParam,nint lParam,nuint id,nuint data)
     {
         try

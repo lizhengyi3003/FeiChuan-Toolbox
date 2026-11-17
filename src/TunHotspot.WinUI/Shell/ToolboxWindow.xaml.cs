@@ -23,12 +23,12 @@ namespace TunHotspot;
 
 public sealed partial class ToolboxWindow : Window
 {
-    private readonly ToolboxStore? _startupStore;
+    private ToolboxStore? _startupStore;
     private ToolboxStore _store => _startupStore ?? throw new InvalidOperationException("启动数据库暂不可用。");
-    private readonly PreferencesStore _preferences;
-    private readonly DiagnosticLog _diagnostics;
+    private PreferencesStore _preferences;
+    private DiagnosticLog _diagnostics;
     private readonly DispatcherTimer _poll = new() { Interval = TimeSpan.FromSeconds(5) };
-    private readonly LiveMonitor? _startupMonitor;
+    private LiveMonitor? _startupMonitor;
     private LiveMonitor _monitor => _startupMonitor ?? throw new InvalidOperationException("启动监测暂不可用。");
     private readonly CancellationTokenSource _windowStop = new();
     private Task _startupBackup = Task.CompletedTask;
@@ -37,6 +37,9 @@ public sealed partial class ToolboxWindow : Window
     private ConfigurationPage? _configuration;
     private readonly bool _qa;
     private bool _startupUnavailable;
+    private bool _startupLoading;
+    private string _startupStage = "读取应用设置";
+    private int _startupStep = 1;
     private string _startupError = "";
     private string? _startupDiagnosticPath;
     private bool _qaPageErrorInjected;
@@ -73,7 +76,7 @@ public sealed partial class ToolboxWindow : Window
     internal sealed record StartupData(PreferencesStore Preferences, DiagnosticLog Diagnostics, ToolboxStore? Store,
         UserSettings Settings, ScanSnapshot? Snapshot, OverviewData? Overview, DateTimeOffset LastControlTime, string Error, string? DiagnosticPath);
 
-    internal static StartupData LoadStartupData(bool qa)
+    internal static StartupData LoadStartupData(bool qa, IProgress<(int Step, string Stage)>? progress = null)
     {
         string root = qa ? AppLog.DataRoot : DataPaths.UserRoot;
         var preferences = new PreferencesStore(root);
@@ -90,10 +93,12 @@ public sealed partial class ToolboxWindow : Window
                 savedPreferences ??= preferences.Load();
             }
             double migrationMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            progress?.Report((2, "检查启动数据库"));
             long opening = Stopwatch.GetTimestamp();
             var store = new ToolboxStore(root, verifyIntegrity: true);
             double databaseMs = Stopwatch.GetElapsedTime(opening).TotalMilliseconds;
             long reading = Stopwatch.GetTimestamp();
+            progress?.Report((3, "读取启动管理概览"));
             var settings = savedPreferences ?? store.Settings;
             var snapshot = store.Latest;
             if (snapshot is not null)
@@ -116,8 +121,16 @@ public sealed partial class ToolboxWindow : Window
         }
     }
 
-    internal ToolboxWindow(StartupData data, bool quiet, bool qa)
+    internal static StartupData PendingStartup(bool qa)
     {
+        string root = qa ? AppLog.DataRoot : DataPaths.UserRoot;
+        return new(new PreferencesStore(root), new DiagnosticLog(root), null, new UserSettings(),
+            null, null, default, "", null);
+    }
+
+    internal ToolboxWindow(StartupData data, bool quiet, bool qa, bool startupLoading = false)
+    {
+        _startupLoading = startupLoading;
         _preferences = data.Preferences;
         _diagnostics = data.Diagnostics;
         _startupStore = data.Store;
@@ -132,24 +145,13 @@ public sealed partial class ToolboxWindow : Window
         _hotspotHost=new ScrollViewer{Content=_hotspot,HorizontalContentAlignment=HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Stretch,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};_qa=qa;
         VersionLabel.Text=Contract.ProductVersion+" · 启动管理";
         if(qa){_settings.Theme="浅色";_settings.Backdrop="None";}
-        if (_startupStore is not null)
-        {
-            _startupMonitor = new(_startupStore, Contract.Sid) { Paused = _settings.Paused };
-            _startupMonitor.Progress += p => DispatcherQueue.TryEnqueue(() => { if (!_adminBusy) ShowProgress(p); });
-            _startupMonitor.SnapshotReady += snapshot => DispatcherQueue.TryEnqueue(() => { if (!_startupUnavailable && !_adminBusy && !_serviceConnected) ApplySnapshot(snapshot); });
-        }
+        InitializeMonitor();
         ExtendsContentIntoTitleBar = true; SetTitleBar(TitleArea);
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory,"Assets","TunHotspot.ico"));
-        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
-        if(!qa&&_settings.WindowX.HasValue&&_settings.WindowY.HasValue)
-            area=DisplayArea.GetFromRect(new RectInt32(_settings.WindowX.Value,_settings.WindowY.Value,Math.Max(640,_settings.WindowWidth),Math.Max(480,_settings.WindowHeight)),DisplayAreaFallback.Nearest).WorkArea;
-        double scale=GetDpiForWindow(handle)/96.0;
-        int width = Math.Min((int)(1200*scale), area.Width - 30), height = Math.Min((int)(820*scale), area.Height - 30);
-        if(!qa&&_settings.WindowWidth>=640&&_settings.WindowHeight>=480){width=Math.Min(_settings.WindowWidth,area.Width-30);height=Math.Min(_settings.WindowHeight,area.Height-30);}
-        AppWindow.MoveAndResize(new RectInt32(area.X + (area.Width-width)/2,area.Y+(area.Height-height)/2,width,height));
-        if(!qa&&_settings.WindowX.HasValue&&_settings.WindowY.HasValue)AppWindow.Move(new PointInt32(Math.Clamp(_settings.WindowX.Value,area.X,area.X+area.Width-width),Math.Clamp(_settings.WindowY.Value,area.Y,area.Y+area.Height-height)));
-        AppWindow.Changed+=(_,change)=>{if(!qa&&AppWindow.IsVisible&&(change.DidPositionChange||change.DidSizeChange)){_settings.WindowX=AppWindow.Position.X;_settings.WindowY=AppWindow.Position.Y;_settings.WindowWidth=AppWindow.Size.Width;_settings.WindowHeight=AppWindow.Size.Height;}};
+        RestoreWindowPlacement(handle);
+        SettingsModeButton.IsEnabled = !_startupLoading;
+        AppWindow.Changed+=(_,change)=>{if(!qa&&!_startupLoading&&!_exiting&&AppWindow.IsVisible&&(change.DidPositionChange||change.DidSizeChange)){_settings.WindowX=AppWindow.Position.X;_settings.WindowY=AppWindow.Position.Y;_settings.WindowWidth=AppWindow.Size.Width;_settings.WindowHeight=AppWindow.Size.Height;}};
         AppWindow.Closing += (_, e) =>
         {
             if (_allowClose) return;
@@ -165,7 +167,60 @@ public sealed partial class ToolboxWindow : Window
         _poll.Tick += async (_,_)=>await Poll();
         if(quiet)DispatcherQueue.TryEnqueue(()=>AppWindow.Hide());
     }
-    internal void Show(){AppWindow.Show();Activate();}
+    private void InitializeMonitor()
+    {
+        if (_startupStore is null) return;
+        _startupMonitor = new(_startupStore, Contract.Sid) { Paused = _settings.Paused };
+        _startupMonitor.Progress += p => DispatcherQueue.TryEnqueue(() => { if (!_exiting && !_adminBusy) ShowProgress(p); });
+        _startupMonitor.SnapshotReady += snapshot => DispatcherQueue.TryEnqueue(() => { if (!_exiting && !_startupUnavailable && !_adminBusy && !_serviceConnected) ApplySnapshot(snapshot); });
+    }
+    private void RestoreWindowPlacement(nint handle)
+    {
+        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        if (!_qa && _settings.WindowX.HasValue && _settings.WindowY.HasValue)
+            area = DisplayArea.GetFromRect(new RectInt32(_settings.WindowX.Value, _settings.WindowY.Value,
+                Math.Max(640, _settings.WindowWidth), Math.Max(480, _settings.WindowHeight)), DisplayAreaFallback.Nearest).WorkArea;
+        double scale = GetDpiForWindow(handle) / 96.0;
+        int width = Math.Min((int)(1200 * scale), area.Width - 30), height = Math.Min((int)(820 * scale), area.Height - 30);
+        if (!_qa && _settings.WindowWidth >= 640 && _settings.WindowHeight >= 480)
+        {
+            width = Math.Min(_settings.WindowWidth, area.Width - 30);
+            height = Math.Min(_settings.WindowHeight, area.Height - 30);
+        }
+        int x = !_qa && _settings.WindowX.HasValue ? Math.Clamp(_settings.WindowX.Value, area.X, area.X + area.Width - width) : area.X + (area.Width - width) / 2;
+        int y = !_qa && _settings.WindowY.HasValue ? Math.Clamp(_settings.WindowY.Value, area.Y, area.Y + area.Height - height) : area.Y + (area.Height - height) / 2;
+        AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
+    }
+    internal bool StartupLoading => _startupLoading;
+    internal void ReportStartupStage(int step, string stage)
+    {
+        if (!_startupLoading || _exiting) return;
+        _startupStep = step;
+        _startupStage = stage;
+        if (_page is not ("hotspot" or "configuration")) RenderPage();
+    }
+    internal void CompleteStartup(StartupData data)
+    {
+        _preferences = data.Preferences;
+        _diagnostics = data.Diagnostics;
+        _startupStore = data.Store;
+        _startupUnavailable = data.Store is null;
+        _settings = data.Settings;
+        _snapshot = data.Snapshot;
+        _overviewData = data.Overview;
+        _lastControlTime = data.LastControlTime;
+        _startupError = data.Error;
+        _startupDiagnosticPath = data.DiagnosticPath;
+        if (_settings.WindowX.HasValue || _settings.WindowWidth >= 640)
+            RestoreWindowPlacement(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        _startupLoading = false;
+        SettingsModeButton.IsEnabled = true;
+        InitializeMonitor();
+        ApplyAppearance();
+        if (_page is not ("hotspot" or "configuration")) RenderPage();
+        if (_preferences.Warning.Length > 0) Tell("应用设置恢复提示", _preferences.Warning, InfoBarSeverity.Warning);
+    }
+    internal void Show(){if(_exiting)return;AppWindow.Show();Activate();}
     internal void ReportError(string message)=>Tell("操作未完成",message,InfoBarSeverity.Error);
     internal void ReportException(Exception error,string operation)
     {

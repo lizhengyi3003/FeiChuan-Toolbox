@@ -44,6 +44,14 @@ foreach ($crt in Get-ChildItem -LiteralPath (Join-Path $ReleaseDirectory 'app') 
     $components += @{ type = 'file'; 'bom-ref' = $ref; name = $crt.Name; version = [Diagnostics.FileVersionInfo]::GetVersionInfo($crt.FullName).FileVersion; hashes = @(@{ alg = 'SHA-256'; content = (Get-FileHash -LiteralPath $crt.FullName).Hash.ToLowerInvariant() }); properties = @(@{ name = 'feichuan:inventory'; value = 'shipped-microsoft-crt' }) }
     $dependencies += @{ ref = $ref; dependsOn = @() }
 }
+$kumiryo = Get-Content -LiteralPath (Join-Path $root 'installer\vendor\Kumiryo\installer.json') -Raw | ConvertFrom-Json
+$kumiryoRef = 'installer:kumiryo/' + $kumiryo.version
+$components += @{
+    type = 'file'; 'bom-ref' = $kumiryoRef; name = $kumiryo.file; version = $kumiryo.version
+    hashes = @(@{ alg = 'SHA-256'; content = $kumiryo.sha256 })
+    properties = @(@{ name = 'feichuan:inventory'; value = 'bundled-third-party-installer' })
+}
+$dependencies += @{ ref = $kumiryoRef; dependsOn = @() }
 $dependencies += @{ ref = 'FeiChuan-Toolbox'; dependsOn = @($components | ForEach-Object { $_['bom-ref'] }) }
 $sbom = [ordered]@{ bomFormat = 'CycloneDX'; specVersion = '1.6'; serialNumber = 'urn:uuid:' + [Guid]::NewGuid(); version = 1
     metadata = @{ timestamp = [DateTimeOffset]::UtcNow.ToString('o'); component = @{ type = 'application'; 'bom-ref' = 'FeiChuan-Toolbox'; name = 'FeiChuan-Toolbox'; version = $version; licenses = @(@{ expression = 'GPL-3.0-only' }); properties = @(@{ name = 'feichuan:source-commit'; value = $sourceCommit }) } }

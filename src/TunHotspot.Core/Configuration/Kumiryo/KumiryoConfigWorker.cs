@@ -59,6 +59,8 @@ internal sealed class KumiryoJobRunner(IKumiryoClient client, Action<KumiryoTarg
         {
             guard = Lock(op.Target);
             validate(op.Target);
+            if (op.Kind == "apply" && op.Target.Version != op.Template.SourceVersion)
+                throw new InvalidOperationException("客户端版本在预览后变化，请使用匹配模板重新预览。");
             report.WorkerPid = Environment.ProcessId; report.WorkerStarted = Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks;
             report.ExecutionPrivilege = Contract.Privilege;
             report.UiStopFallbackAllowed = op.AllowUiStopFallback;
@@ -106,7 +108,14 @@ internal sealed class KumiryoJobRunner(IKumiryoClient client, Action<KumiryoTarg
                 if (!client.Connected(op.Target)) throw new IOException("重新打开后未恢复原有连接状态。");
             }
             actual = KumiryoConfigPlan.ReadPreferences(KumiryoPrivateFiles.Read(op.Target.Preferences));
-            if (op.Kind == "apply") report.Checks = KumiryoConfiguration.VerifyModules(KumiryoConfigPlan.Settings(actual), op.Template);
+            if (op.Kind == "apply")
+            {
+                var actualSettings = KumiryoConfigPlan.Settings(actual);
+                report.Checks = KumiryoConfiguration.VerifyModules(actualSettings, op.Template);
+                if (op.Template.PreserveExistingRules &&
+                    !JsonNode.DeepEquals(KumiryoConfigPlan.Settings(after)["globalAddedRules"], actualSettings["globalAddedRules"]))
+                    report.Checks.Add(new("已有附加规则", "未通过", "客户端重开后附加规则与写入结果不一致。"));
+            }
             else
             {
                 bool restored = ManagedEqual(actual, after);

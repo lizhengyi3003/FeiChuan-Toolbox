@@ -39,10 +39,12 @@ public static class KumiryoConfiguration
         if (!executable) return;
         if (!Path.IsPathFullyQualified(target.Executable) || !Path.GetFileName(target.Executable).Equals("kumiryo.exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(target.Executable)) throw new FileNotFoundException("未找到 Kumiryo 程序，可手动选择已有安装目录中的 kumiryo.exe。");
         KumiryoPrivateFiles.NoLinks(target.Executable);
-        var version = FileVersionInfo.GetVersionInfo(target.Executable);
-        if (version.CompanyName != "com.kumiryo" || !File.Exists(Path.Combine(Path.GetDirectoryName(target.Executable)!, "KumiryoCore.exe"))) throw new InvalidDataException("客户端身份或内核文件不完整，已停止自动执行。");
-        target.Version = version.ProductVersion ?? "未知";
+        if (!IsClientExecutable(target.Executable)) throw new InvalidDataException("客户端身份或内核文件不完整，已停止自动执行。");
+        target.Version = FileVersionInfo.GetVersionInfo(target.Executable).ProductVersion ?? "未知";
     }
+    internal static bool IsClientExecutable(string path) =>
+        File.Exists(path) && FileVersionInfo.GetVersionInfo(path).CompanyName == "com.kumiryo" &&
+        File.Exists(Path.Combine(Path.GetDirectoryName(path)!, "KumiryoCore.exe"));
     public static KumiryoPreview Preview(KumiryoTarget target, KumiryoTemplate template)
     {
         var result = new KumiryoPreview { Target = target, Rules = (template.Settings["globalAddedRules"] as JsonArray)?.Count ?? 0 };
@@ -52,6 +54,8 @@ public static class KumiryoConfiguration
             KumiryoClient.CheckClientIdentity(target);
             string text = KumiryoPrivateFiles.Read(target.Preferences); var preferences = KumiryoConfigPlan.ReadPreferences(text); var config = KumiryoConfigPlan.Settings(preferences);
             result.FileHash = Contract.Hash(text); result.TemplateHash = KumiryoConfigPlan.TemplateHash(template);
+            if (template.PreserveExistingRules && config["globalAddedRules"] is JsonArray { Count: > 0 } rules)
+                result.Rules = rules.Count;
             foreach (var module in KumiryoConfigPlan.Modules)
             {
                 if (!config.ContainsKey(module.Key)) result.Blocks.Add("客户端缺少设置模块：" + module.Name + "，请核对客户端版本。");
@@ -79,12 +83,16 @@ public static class KumiryoConfiguration
         catch (Exception ex) { result.Blocks.Add(SafeError(ex)); }
         return result;
     }
-    public static List<KumiryoCheck> VerifyModules(JsonObject config, KumiryoTemplate template) => KumiryoConfigPlan.Modules.Select(module =>
+    public static List<KumiryoCheck> VerifyModules(JsonObject config, KumiryoTemplate template)
     {
-        var subset = new KumiryoTemplate { Settings = (JsonObject)template.Settings.DeepClone() };
-        var changes = KumiryoConfigPlan.Differences(config, subset).Where(x => x.Path == "/" + module.Key || x.Path.StartsWith("/" + module.Key + "/", StringComparison.Ordinal)).ToList();
-        return new KumiryoCheck(module.Name, changes.Count == 0 ? "通过" : "待配置", changes.Count == 0 ? "持久设置与模板一致。" : $"有 {changes.Count} 处差异。");
-    }).ToList();
+        var differences = KumiryoConfigPlan.Differences(config, template);
+        return KumiryoConfigPlan.Modules.Select(module =>
+        {
+            var path = "/" + module.Key;
+            int count = differences.Count(x => x.Path == path || x.Path.StartsWith(path + "/", StringComparison.Ordinal));
+            return new KumiryoCheck(module.Name, count == 0 ? "通过" : "待配置", count == 0 ? "持久设置与模板一致。" : $"有 {count} 处差异。");
+        }).ToList();
+    }
     public static KumiryoTemplate Capture(KumiryoTarget target)
     {
         ValidateTarget(target); return KumiryoConfigPlan.Capture(KumiryoPrivateFiles.Read(target.Preferences), target.Version);
@@ -145,10 +153,10 @@ public static class KumiryoConfiguration
             catch (Exception failure) when (failure is System.Management.ManagementException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException) { return false; }
         }
     }
-    public static KumiryoTemplate CurrentTemplate()
+    public static KumiryoTemplate CurrentTemplate(string? targetVersion = null)
     {
         string path = Path.Combine(Root, "template.json");
-        var template = File.Exists(path) ? Contract.Decode<KumiryoTemplate>(KumiryoPrivateFiles.Read(path)) : KumiryoConfigPlan.Embedded();
+        var template = File.Exists(path) ? Contract.Decode<KumiryoTemplate>(KumiryoPrivateFiles.Read(path)) : KumiryoConfigPlan.Embedded(targetVersion);
         KumiryoConfigPlan.Validate(template); return template;
     }
     public static void SaveTemplate(KumiryoTemplate template)

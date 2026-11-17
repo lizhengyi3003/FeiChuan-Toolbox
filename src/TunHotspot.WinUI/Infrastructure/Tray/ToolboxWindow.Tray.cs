@@ -30,12 +30,20 @@ public sealed partial class ToolboxWindow : Window
         {
             if(_trayMenu is not null){_trayMenu.Activate();return;}
             var menu=new TrayMenuWindow(TrayState(),HandleTrayCommand);_trayMenu=menu;
-            menu.Closed+=(_,_)=>{if(ReferenceEquals(_trayMenu,menu))_trayMenu=null;};menu.ShowAt(x,y);
+            _tray?.SetMenuOpen(true);
+            menu.Closed+=(_,_)=>
+            {
+                if(!ReferenceEquals(_trayMenu,menu))return;
+                _trayMenu=null;
+                _tray?.SetMenuOpen(false);
+            };
+            menu.ShowAt(x,y);
         }
-        catch(Exception ex){_trayMenu?.Dismiss();_trayMenu=null;ReportError(ex.Message);AppLog.Write("tray-menu-error",new{ex.Message});}
+        catch(Exception ex){_trayMenu?.Dismiss();_trayMenu=null;_tray?.SetMenuOpen(false);ReportError(ex.Message);AppLog.Write("tray-menu-error",new{ex.Message});}
     }
     private async void HandleTrayCommand(string command)
     {
+        if (_exiting) return;
         try
         {
             if (_startupUnavailable && command is "scan" or "pause") { Show(); Navigate("overview"); return; }

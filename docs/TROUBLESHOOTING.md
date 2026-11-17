@@ -1,4 +1,4 @@
-# 常见问题 · 1.5.9
+# 常见问题 · 1.6.0
 
 ## 如何找到最新版
 
@@ -13,7 +13,7 @@
 如果错误指向 `%LOCALAPPDATA%\Temp\is-*.tmp`，安装器在解包时就未能创建临时目录。可以从 PowerShell 7 在仓库根目录运行以下命令。脚本核对安装包旁的 SHA-256，并为本次安装进程设置独立的 `TEMP` 和 `TMP`。
 
 ```powershell
-.\tools\install\Start-ToolboxInstaller.ps1 -InstallerPath .\artifacts\current\packages\FeiChuan-Toolbox-1.5.9-Setup-x64.exe
+.\tools\install\Start-ToolboxInstaller.ps1 -InstallerPath .\artifacts\current\packages\FeiChuan-Toolbox-1.6.0-Setup-x64.exe
 ```
 
 也可直接完整解压同目录的便携 ZIP，运行其中的 `TunHotspot.exe`。安装临时目录属于当前用户，脚本在安装进程退出后只删除空目录。参见 [Inno Setup 临时目录说明](https://jrsoftware.org/is6help/topic_securitymeasures.htm)。
