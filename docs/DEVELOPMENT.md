@@ -49,9 +49,7 @@ UI 脚本创建自己的 QA 实例及临时数据，测试时不要让多个 UI 
 
 ## 维护约定
 
-安装器的原生提权在 installer/Elevation.iss；只读最小检查 tools/test/local/UacHandoffProbe.iss 引用同一实现。普通权限运行检查并点击其按钮；legacy 模式用于复现旧 ShellExec 自重启错误，native 模式应弹出 UAC，子进程记录 Admin=1 并在安装前退出。不要把零文件安装的完成状态当作提权成功；须核对 Native 成功记录和管理员子进程。正式包还应从普通目录页触发提权，核对新进程的原账户、目录和 HKCU 安装语义；UAC 必须由用户处理。
-
-检查默认 METHOD=check，仅验证目录页路径可读取，不提权；需要交互时显式传 /METHOD=native。CreateAppDir=yes 用于让目录页真实出现，PrepareToInstall 始终阻止实际安装。测试结束后须核对自己启动的父子 PID 已退出；异常窗口也属于待清理的测试进程，不能只关闭沙盒便视为收尾完成。
+安装范围由 Inno Setup 的 installer/inno/InstallMode.iss 声明。只读 UacHandoffProbe.iss 可检验 /CURRENTUSER 和 /ALLUSERS 的选择及管理员授权；探针在初始化阶段退出。
 
 安装升级回归入口为 tools/test/sandbox/Test-InstallerUpgradeSandbox.ps1；用 -GuestScript 指定同目录 Test-InstallerRecoveryGuest.ps1，-PreviousInstaller 指向历史安装包，-CandidateInstaller 指向当前包，-OutputDirectory 使用全新报告目录。默认脚本保留旧版故障诊断行为，不能将其失败预期当成新版本成功回归。沙盒关闭网络与剪贴板，仅映射测试输入及结果，不映射本机安装目录或用户数据。升级协调器使用内置 Windows PowerShell 5.1，源文件保留 UTF-8 BOM；构建会核对编码并固定内嵌脚本 SHA-256。
 

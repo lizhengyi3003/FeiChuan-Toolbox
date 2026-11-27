@@ -129,6 +129,7 @@ public partial class App : Application
                 provisional = new ToolboxWindow(ToolboxWindow.PendingStartup(qa), false, qa, startupLoading: true);
                 RegisterWindow(provisional);
                 ActivateMainWindow();
+                provisional.StartTray();
                 progress = new Progress<(int Step, string Stage)>(stage => provisional.ReportStartupStage(stage.Step, stage.Stage));
             }
             var loading = Task.Run(async () =>

@@ -14,7 +14,6 @@ internal static class McpServer
     private static object Tool(string name, string description, object schema, bool readOnly=true) => new { name, description, inputSchema=schema, annotations=new { readOnlyHint=readOnly, destructiveHint=false, openWorldHint=false } };
     public static async Task<int> Run()
     {
-        UserDataMigration.Ensure();
         var store = new ToolboxStore(DataPaths.UserRoot,true);
         while (true)
         {

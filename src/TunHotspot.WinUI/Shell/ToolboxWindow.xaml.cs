@@ -31,7 +31,6 @@ public sealed partial class ToolboxWindow : Window
     private LiveMonitor? _startupMonitor;
     private LiveMonitor _monitor => _startupMonitor ?? throw new InvalidOperationException("启动监测暂不可用。");
     private readonly CancellationTokenSource _windowStop = new();
-    private Task _startupBackup = Task.CompletedTask;
     private readonly HotspotPage _hotspot;
     private readonly ScrollViewer _hotspotHost;
     private ConfigurationPage? _configuration;
@@ -81,18 +80,11 @@ public sealed partial class ToolboxWindow : Window
         string root = qa ? AppLog.DataRoot : DataPaths.UserRoot;
         var preferences = new PreferencesStore(root);
         var diagnostics = new DiagnosticLog(root);
-        long started = Stopwatch.GetTimestamp();
         var savedPreferences = preferences.Load();
         bool recoveryQa = qa && Environment.GetCommandLineArgs().Contains("recovery-interactive");
         if (recoveryQa && !File.Exists(Path.Combine(root,"toolbox.db"))) { Directory.CreateDirectory(root); File.WriteAllText(Path.Combine(root, "toolbox.db"), "TunHotspot isolated corruption fixture"); }
         try
         {
-            if (!qa)
-            {
-                UserDataMigration.Ensure();
-                savedPreferences ??= preferences.Load();
-            }
-            double migrationMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             progress?.Report((2, "检查启动数据库"));
             long opening = Stopwatch.GetTimestamp();
             var store = new ToolboxStore(root, verifyIntegrity: true);
@@ -107,7 +99,7 @@ public sealed partial class ToolboxWindow : Window
             }
             var overview = snapshot is null ? null : OverviewData.Read(store);
             var lastControl = store.Get<DateTimeOffset>("lastControlTime");
-            AppLog.Write("startup-data-timing", new { migrationMs, databaseMs, readingMs = Stopwatch.GetElapsedTime(reading).TotalMilliseconds });
+            AppLog.Write("startup-data-timing", new { databaseMs, readingMs = Stopwatch.GetElapsedTime(reading).TotalMilliseconds });
             return new(preferences, diagnostics, store, settings, snapshot, overview, lastControl, "", null);
         }
         catch (Exception ex) when ((!qa || recoveryQa) && (ex is Microsoft.Data.Sqlite.SqliteException or InvalidDataException or System.Text.Json.JsonException or IOException or UnauthorizedAccessException))
@@ -124,7 +116,8 @@ public sealed partial class ToolboxWindow : Window
     internal static StartupData PendingStartup(bool qa)
     {
         string root = qa ? AppLog.DataRoot : DataPaths.UserRoot;
-        return new(new PreferencesStore(root), new DiagnosticLog(root), null, new UserSettings(),
+        var preferences = new PreferencesStore(root);
+        return new(preferences, new DiagnosticLog(root), null, preferences.Load() ?? new UserSettings(),
             null, null, default, "", null);
     }
 
@@ -156,8 +149,17 @@ public sealed partial class ToolboxWindow : Window
         {
             if (_allowClose) return;
             e.Cancel = true;
-            if (!_exiting && _settings.CloseToTray && _tray is not null) AppWindow.Hide();
-            else DispatcherQueue.TryEnqueue(ExitToolbox);
+            if (!_exiting && _settings.CloseToTray)
+            {
+                StartTray();
+                if (_tray is not null)
+                {
+                    AppWindow.Hide();
+                    return;
+                }
+                if (_startupLoading) return;
+            }
+            DispatcherQueue.TryEnqueue(ExitToolbox);
         };
         try { _uiSettings.AdvancedEffectsEnabledChanged += AdvancedEffectsChanged; } catch(Exception ex) { AppLog.Write("optional-theme-event",new{ex.Message}); }
         try { _accessibility.HighContrastChanged += HighContrastChanged; } catch(Exception ex) { AppLog.Write("optional-accessibility-event",new{ex.Message}); }

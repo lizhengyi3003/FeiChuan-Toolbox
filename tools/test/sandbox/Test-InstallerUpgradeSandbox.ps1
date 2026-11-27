@@ -9,7 +9,7 @@ Copy-Item -LiteralPath $PreviousInstaller -Destination (Join-Path $inputFolder '
 Copy-Item -LiteralPath $CandidateInstaller -Destination (Join-Path $inputFolder 'candidate-setup.exe')
 Copy-Item -LiteralPath $GuestScript -Destination (Join-Path $inputFolder 'run.ps1')
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-Copy-Item -LiteralPath (Join-Path $root 'installer\Upgrade-Coordinator.ps1') -Destination (Join-Path $inputFolder 'Upgrade-Coordinator.ps1')
+Copy-Item -LiteralPath (Join-Path $root 'installer\scripts\Upgrade-Coordinator.ps1') -Destination (Join-Path $inputFolder 'Upgrade-Coordinator.ps1')
 @{Previous=(Get-FileHash -LiteralPath $PreviousInstaller).Hash;Candidate=(Get-FileHash -LiteralPath $CandidateInstaller).Hash;GuestScript=(Get-FileHash -LiteralPath $GuestScript).Hash;Started=[DateTimeOffset]::Now.ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $out 'inputs.json') -Encoding utf8
 $inXml=[Security.SecurityElement]::Escape($inputFolder);$outXml=[Security.SecurityElement]::Escape($resultFolder)
 $xml=@"

@@ -19,7 +19,7 @@ internal static class Program
             if(args.Length==3&&args[0]=="--hotspot-worker"&&int.TryParse(args[1],out int parent)&&long.TryParse(args[2],out long started))return await HotspotWorker.Run(parent,started);
             if(args.Length==1&&args[0]=="--database-health")
             {
-                UserDataMigration.Ensure();var store=new ToolboxStore(DataPaths.UserRoot,true);
+                var store=new ToolboxStore(DataPaths.UserRoot,true);
                 Console.WriteLine(Contract.Encode(new{Root=store.Root,Integrity="ok",Entries=store.Latest?.Entries.Count??0,Decisions=store.Decisions.Count,Histories=store.History.Count}));return 0;
             }
             if(args.Length==1&&args[0]=="--update-owned-monitor")
@@ -116,6 +116,6 @@ internal static class Program
             }
             Console.Error.WriteLine("飞船的小工具箱 · 只读采集引擎：由工具箱启动，或使用 --mcp / --diagnostic-scan。"); return 2;
         }
-        catch (Exception ex) { new DiagnosticLog(WindowsIdentity.GetCurrent().IsSystem?DataPaths.MachineRoot:DataPaths.UserRoot).Record("引擎："+(args.FirstOrDefault()??"启动"),ex);Console.Error.WriteLine(ex.Message); return 1; }
+        catch (Exception ex) { new DiagnosticLog(WindowsIdentity.GetCurrent().IsSystem?DataPaths.MachineRoot:DataPaths.DiagnosticRoot).Record("引擎："+(args.FirstOrDefault()??"启动"),ex);Console.Error.WriteLine(ex.Message); return 1; }
     }
 }

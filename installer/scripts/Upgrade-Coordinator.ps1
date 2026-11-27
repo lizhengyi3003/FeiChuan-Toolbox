@@ -1,20 +1,29 @@
-﻿param(
-    [Parameter(Mandatory=$true)][ValidateSet('Identity','Inspect','Prepare','VerifyAndCommit','Rollback')][string]$Action,
-    [string]$Target, [string]$Manifest, [string]$Operation, [string]$OwnerSid,
-    [Parameter(Mandatory=$true)][string]$ResultFile,
-    [int]$InstallerPid, [switch]$AllowExit, [switch]$InjectVerificationFailure
+﻿[CmdletBinding(DefaultParameterSetName='Install')]
+param(
+    [Parameter(Mandatory=$true,ParameterSetName='Install')][ValidateSet('Identity','Inspect','InspectData','Prepare','VerifyAndCommit','Rollback')][string]$Action,
+    [string]$Target, [string]$DataDirectory, [string]$Manifest, [string]$Operation,
+    [Parameter(ParameterSetName='Install')]
+    [Parameter(Mandatory=$true,ParameterSetName='VerifyAccount')][string]$OwnerSid,
+    [Parameter(Mandatory=$true,ParameterSetName='VerifyAccount')][switch]$VerifyAccount,
+    [Parameter(Mandatory=$true,ParameterSetName='Install')][string]$ResultFile,
+    [int]$InstallerPid, [switch]$AdminInstallMode, [switch]$AllowExit, [switch]$InjectVerificationFailure
 )
 # Windows PowerShell 5.1 is built into supported Windows 11 systems. No SDK,
 # third-party module, network operation, or arbitrary command execution is used.
 $ErrorActionPreference='Stop'
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $sid=$identity.User.Value
+if($VerifyAccount){
+ # The original, unelevated token can read Inno's extracted script but cannot write to {tmp}.
+ if($OwnerSid -eq $sid){exit 0}
+ exit 21
+}
 $elevated=[Security.Principal.WindowsPrincipal]::new($identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $adminSid=[Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
 $systemSid=[Security.Principal.SecurityIdentifier]::new('S-1-5-18')
 $userRoot=Join-Path ([Environment]::GetFolderPath('UserProfile')) '.FeiChuanToolbox'
 $machineRoot=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'TunHotspot'
-$operationRoot=if($elevated){Join-Path $machineRoot ('Installer\'+$sid+'\operations')}else{Join-Path $userRoot 'installer\operations'}
+$operationRoot=if($elevated){Join-Path $machineRoot ('Installer\'+$sid+'\operations')}else{Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'FeiChuanToolboxInstaller\operations'}
 $uninstallKey='Software\Microsoft\Windows\CurrentVersion\Uninstall\{8EE42691-81B4-4A6F-A115-9961835E1D45}_is1'
 $state=$null
 $preparedByThisCall=$false
@@ -71,6 +80,45 @@ function Check-Target([string]$path,[bool]$Recorded=$false){
   if(-not(Test-Path -LiteralPath $exe)){throw '此目录包含其他内容且未确认属于工具箱，已停止。'}
   $product=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductName
   if($product -notin @('飞船的小工具箱','TUN 热点与启动工具箱','TUN 热点助手','TunHotspot')){throw '目标程序身份未确认，已停止。'}
+ }
+ return $path
+}
+function Resolve-DataDirectory([string]$path,[bool]$create){
+ if($path -notmatch '^[A-Za-z]:\\'){throw '请选择本地磁盘上的绝对数据路径。'}
+ $path=Full $path
+ No-Links $path
+ $drive=[IO.DriveInfo]::new([IO.Path]::GetPathRoot($path))
+ if($drive.DriveType -ne 'Fixed' -or $path.Length -le 3){throw '请选择固定本地磁盘上的专用数据文件夹。'}
+ foreach($reserved in @($Target,$userRoot,$machineRoot,$operationRoot,$env:WINDIR)){
+  $reserved=Full $reserved
+  if($path.Equals($reserved,[StringComparison]::OrdinalIgnoreCase) -or
+     $path.StartsWith($reserved+'\',[StringComparison]::OrdinalIgnoreCase) -or
+     $reserved.StartsWith($path+'\',[StringComparison]::OrdinalIgnoreCase)){
+   throw '数据目录必须独立于程序、系统、旧数据和安装备份目录。'
+  }
+ }
+ $marker=Join-Path $path '.feichuan-data-owner'
+ if(Test-Path -LiteralPath $path){
+  if(-not(Test-Path -LiteralPath $path -PathType Container)){throw '数据路径必须是文件夹。'}
+  No-Links $marker
+  if((Test-Path -LiteralPath $marker -PathType Leaf) -and [IO.File]::ReadAllText($marker).Trim() -eq $sid){return $path}
+  if(@(Get-ChildItem -LiteralPath $path -Force).Count -ne 0){throw '请选择空目录，或此账户已使用的工具箱数据目录。'}
+ }
+ $parent=Split-Path -Parent $path
+ if($create){
+  if(-not(Test-Path -LiteralPath $parent -PathType Container)){throw '请选择上一级目录实际存在的数据路径。'}
+  $exists=Test-Path -LiteralPath $path
+  $security=[Security.AccessControl.DirectorySecurity]::new()
+  $security.SetAccessRuleProtection($true,$false)
+  $security.SetOwner($identity.User)
+  $inherit=[Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit
+  foreach($principal in @($identity.User,$systemSid,$adminSid)){
+   $security.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($principal,'FullControl',$inherit,'None','Allow'))
+  }
+  if($exists){[IO.Directory]::SetAccessControl($path,$security)}
+  else{[IO.Directory]::CreateDirectory($path,$security) | Out-Null}
+  No-Links $marker
+  [IO.File]::WriteAllText($marker,$sid,[Text.UTF8Encoding]::new($false))
  }
  return $path
 }
@@ -188,8 +236,21 @@ function Write-Permission {
   throw "安装目录不可写，Windows 错误 $errorCode。需要当前账户管理员授权，或选择可写的用户目录。"
  }
 }
-function Registry-Snapshot {
- $key=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($uninstallKey)
+function Registry-Root([bool]$MachineMode){
+ if($MachineMode){return [Microsoft.Win32.Registry]::LocalMachine}
+ return [Microsoft.Win32.Registry]::CurrentUser
+}
+function Registry-InstallPath([bool]$MachineMode){
+ $key=(Registry-Root $MachineMode).OpenSubKey($uninstallKey)
+ if($key){try{return [string]$key.GetValue('InstallLocation')}finally{$key.Dispose()}}
+ return ''
+}
+function Registry-OwnsTarget([bool]$MachineMode){
+ $path=Registry-InstallPath $MachineMode
+ return $path -and (Full $path).Equals($Target,[StringComparison]::OrdinalIgnoreCase)
+}
+function Registry-Snapshot([bool]$MachineMode){
+ $key=(Registry-Root $MachineMode).OpenSubKey($uninstallKey)
  if(-not $key){return @{Exists=$false;Values=@()}}
  try{
   $values=@();foreach($name in $key.GetValueNames()){
@@ -199,9 +260,10 @@ function Registry-Snapshot {
   };return @{Exists=$true;Values=$values}
  }finally{$key.Dispose()}
 }
-function Registry-Restore($snapshot){
- if(-not $snapshot.Exists){[Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($uninstallKey,$false);return}
- $key=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($uninstallKey)
+function Registry-Restore($snapshot,[bool]$MachineMode){
+ $registry=Registry-Root $MachineMode
+ if(-not $snapshot.Exists){$registry.DeleteSubKeyTree($uninstallKey,$false);return}
+ $key=$registry.CreateSubKey($uninstallKey)
  try{
   foreach($name in $key.GetValueNames()){$key.DeleteValue($name,$false)}
   foreach($value in $snapshot.Values){
@@ -255,7 +317,12 @@ function Restore-Operation {
    }elseif(Test-Path -LiteralPath $destination){[IO.File]::Delete($destination)}
   }catch{$errors+=$file.Relative+': '+$_.Exception.Message}
  }
- if(-not $errors.Count){try{Registry-Restore $state.Registration}catch{$errors+=$_.Exception.Message}}
+ if(-not $errors.Count){try{
+  Registry-Restore $state.Registration ([bool]$state.AdminInstallMode)
+  if($state.PreviousUserRegistration -and -not (Registry-InstallPath $false)){
+   Registry-Restore $state.PreviousUserRegistration $false
+  }
+ }catch{$errors+=$_.Exception.Message}}
  if($errors.Count){$state.Phase='RecoveryRequired';$state.Message=$errors -join "`n";Save-State;throw ('恢复未完整完成，原件仍保留：'+$Operation+"`n"+$state.Message)}
  $state.Phase='RolledBack';$state.Message='已回读恢复安装前程序文件和安装登记；不等同于原状态本来就是健康版本。';Save-State;Clear-Gate
  Log-Step '恢复完成' $state.Message
@@ -264,13 +331,20 @@ function Restore-Operation {
 try{
  if($OwnerSid -and $OwnerSid -ne $sid){throw '提升权限后账户发生变化；请用当前账户提升，或安装到当前用户可写目录。'}
  if($Action -eq 'Identity'){$result.Success=$true}
+ elseif($Action -eq 'InspectData'){
+  $Target=Check-Target $Target
+  $null=Resolve-DataDirectory $DataDirectory $false
+  $result.Success=$true
+ }
  elseif($Action -in @('Inspect','Prepare')){
   $Target=Check-Target $Target
+  if(-not $AdminInstallMode -and (Registry-OwnsTarget $true)){throw '此目录已有“所有用户”版，请重新运行安装器并选择“为所有用户安装”。'}
   Write-Permission
   if($Action -eq 'Inspect'){
    $message='目标权限可用；安装将退出本目录下的工具箱界面、热点工作进程和 Codex 桥接，备份后替换并核验。'
    $result.Success=$true
   }else{
+   $DataDirectory=Resolve-DataDirectory $DataDirectory $false
    $payload=@(Payload $Manifest)
    if($InstallerPid -le 0){throw '缺少安装器身份，尚未处理进程或文件。'}
    $parent=Get-Process -Id $InstallerPid -ErrorAction Stop
@@ -294,7 +368,7 @@ try{
    $result.Operation=$Operation
    Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $Operation 'Recover.ps1')
    @('@echo off','"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0Recover.ps1" -Action Rollback -Operation "%~dp0." -ResultFile "%TEMP%\FeiChuan-restore-result.json"','echo.','echo Result: %TEMP%\FeiChuan-restore-result.json.message','pause') | Set-Content -LiteralPath (Join-Path $Operation 'Restore.cmd') -Encoding ascii
-   $names=@($payload | ForEach-Object {$_.Relative})+@('files.sha256')
+   $names=@($payload | ForEach-Object {$_.Relative})+@('files.sha256',('user-data-'+$sid+'.path'))
    if(Test-Path -LiteralPath $Target){$names+=@(Get-ChildItem -LiteralPath $Target -File -Filter 'unins*' | Where-Object {$_.Name -match '^unins\d+\.(exe|dat|msg)$'} | ForEach-Object {$_.Name})}
    $records=@()
    foreach($relative in $names | Select-Object -Unique){
@@ -308,7 +382,8 @@ try{
     }
     $records+=@{Relative=$relative;Existed=[bool]$exists;Hash=$hash}
    }
-   $state=[ordered]@{Schema=1;OwnerSid=$sid;Machine=$env:COMPUTERNAME;Elevated=$elevated;Target=$Target;Phase='Prepared';Message='';Files=$records;Payload=$payload;Registration=(Registry-Snapshot);Created=[DateTimeOffset]::Now.ToString('o')}
+   $previousUserRegistration=if($AdminInstallMode -and (Registry-OwnsTarget $false)){Registry-Snapshot $false}else{$null}
+   $state=[ordered]@{Schema=1;AdminInstallMode=[bool]$AdminInstallMode;PreviousUserRegistration=$previousUserRegistration;OwnerSid=$sid;Machine=$env:COMPUTERNAME;Elevated=$elevated;Target=$Target;DataDirectory=$DataDirectory;Phase='Prepared';Message='';Files=$records;Payload=$payload;Registration=(Registry-Snapshot ([bool]$AdminInstallMode));Created=[DateTimeOffset]::Now.ToString('o')}
    Save-State
    [IO.Directory]::CreateDirectory($Target) | Out-Null
    $parent=Get-Process -Id $InstallerPid -ErrorAction Stop
@@ -334,6 +409,16 @@ try{
    if($failures.Count){throw ('安装后核验失败：'+($failures -join ', '))}
    $state.Phase='Verified';Save-State;Log-Step '文件核验通过' ([string]$state.Payload.Count)
    Write-Output 'INSTALL_STAGE:commit'
+   $directory=Resolve-DataDirectory $state.DataDirectory $true
+   $pointer=Child $Target ('user-data-'+$sid+'.path')
+   [IO.File]::WriteAllText($pointer,$directory,[Text.UTF8Encoding]::new($false))
+   if($state.AdminInstallMode -and $state.PreviousUserRegistration){
+    if(-not (Registry-OwnsTarget $true)){throw '无法核对新的所有用户安装登记。'}
+    if(Registry-OwnsTarget $false){
+     [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($uninstallKey,$false)
+     Log-Step '升级安装登记' '同目录的旧当前用户登记已由所有用户安装登记接替'
+    }
+   }
    $state.Phase='Committed';Save-State;Clear-Gate;Log-Step '安装完成' '程序完整性已回读，原始备份保留';$message='安装完成；备份和日志：'+$Operation;$result.Success=$true
   }
  }

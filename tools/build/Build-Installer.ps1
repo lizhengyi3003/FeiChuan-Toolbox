@@ -54,7 +54,7 @@ foreach($binary in @('TunHotspot.exe','TunHotspot.Core.dll','Engine\TunHotspot.E
 }
 if(-not $OutputDirectory){$OutputDirectory=$layout.PreviewPackages}
 $OutputDirectory=[IO.Path]::GetFullPath($OutputDirectory)
-$coordinatorFile=Join-Path $root 'installer\Upgrade-Coordinator.ps1'
+$coordinatorFile=Join-Path $root 'installer\scripts\Upgrade-Coordinator.ps1'
 $coordinatorBytes=[IO.File]::ReadAllBytes($coordinatorFile)
 if($coordinatorBytes.Length -lt 3 -or $coordinatorBytes[0] -ne 239 -or $coordinatorBytes[1] -ne 187 -or $coordinatorBytes[2] -ne 191){throw '升级协调器必须为 UTF-8 BOM，以兼容内置 Windows PowerShell 5.1。'}
 $coordinatorHash=(Get-FileHash -LiteralPath $coordinatorFile).Hash.ToLowerInvariant()

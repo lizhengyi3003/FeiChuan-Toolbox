@@ -4,10 +4,10 @@ namespace TunHotspot;
 
 internal static class AppLog
 {
-    internal static string DataRoot {get;private set;}=TunHotspot.Core.DataPaths.UserRoot;
-    internal static void Configure(string root)=>DataRoot=root;
-    internal static string Folder => DataRoot.Equals(TunHotspot.Core.DataPaths.UserRoot,StringComparison.OrdinalIgnoreCase)
-        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"TunHotspot.WinUI") : Path.Combine(DataRoot,"legacy-operations");
+    private static string? _fixtureRoot;
+    internal static string DataRoot => _fixtureRoot ?? TunHotspot.Core.DataPaths.DiagnosticRoot;
+    internal static void Configure(string root) => _fixtureRoot = root;
+    internal static string Folder => Path.Combine(DataRoot, "legacy-operations");
     private static readonly object Gate = new();
 
     internal static void Write(string action, object details)

@@ -79,13 +79,30 @@ if (Test-Path -LiteralPath $destination) {
         if ($previous.version -notmatch '^\d+\.\d+\.\d+$') { throw '旧发布元数据无效，保留旧目录。' }
         $archived = Confirm-ArtifactPath (Join-Path $layout.Archive ('releases\' + $previous.version + '\bundle-' + [Guid]::NewGuid().ToString('N')))
         [IO.Directory]::CreateDirectory((Split-Path -Parent $archived)) | Out-Null
-        Move-Item -LiteralPath $destination -Destination $archived
+        # Rename the directory as a unit. A sharing violation must leave the old bundle intact.
+        [IO.Directory]::Move($destination, $archived)
     }
-    else { Remove-Item -LiteralPath (Confirm-ArtifactPath $destination) }
+    else { [IO.Directory]::Delete((Confirm-ArtifactPath $destination)) }
 }
-try { Move-Item -LiteralPath (Confirm-ArtifactPath $stage) -Destination $destination }
+try {
+    [IO.Directory]::Move((Confirm-ArtifactPath $stage), $destination)
+    if ($archived) {
+        $oldPortableData = Confirm-ArtifactPath (Join-Path $archived 'app.Data')
+        if (Test-Path -LiteralPath $oldPortableData -PathType Container) {
+            $newPortableData = Confirm-ArtifactPath (Join-Path $destination 'app.Data')
+            [IO.Directory]::Move($oldPortableData, $newPortableData)
+        }
+    }
+}
 catch {
-    if ($archived -and -not (Test-Path -LiteralPath $destination)) { Move-Item -LiteralPath (Confirm-ArtifactPath $archived) -Destination $destination }
+    if ($archived) {
+        if ((Test-Path -LiteralPath $destination) -and -not (Test-Path -LiteralPath $stage)) {
+            [IO.Directory]::Move($destination, (Confirm-ArtifactPath $stage))
+        }
+        if (-not (Test-Path -LiteralPath $destination)) {
+            [IO.Directory]::Move((Confirm-ArtifactPath $archived), $destination)
+        }
+    }
     throw
 }
 if ($destination.Equals($layout.Current, [StringComparison]::OrdinalIgnoreCase)) {

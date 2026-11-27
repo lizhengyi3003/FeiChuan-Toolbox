@@ -1,0 +1,3 @@
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
+UsePreviousPrivileges=no
