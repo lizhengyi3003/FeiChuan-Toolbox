@@ -114,17 +114,17 @@ try{
  if($exit -ne 0 -or -not $ui.HasExited){throw 'Current UI cooperative exit failed'}
  if(Select-String -LiteralPath (Join-Path $output '08-cooperative-current-ui-exit.log') -Pattern '旧版退出兜底' -Encoding utf8 -Quiet){throw 'Current UI unexpectedly needed force exit'}
  $ui.Dispose()
- $operations=Join-Path $env:LOCALAPPDATA 'TunHotspot.WinUI\operations.jsonl'
+ $operations=Join-Path ($install+'.Data') 'legacy-operations\operations.jsonl'
  $cleanExit=Get-Content -LiteralPath $operations -Encoding utf8 -Tail 30 | ForEach-Object {$_ | ConvertFrom-Json} |
   Where-Object {$_.action -eq 'toolbox-closed' -and $_.details.forUpdate -eq $true}
  if(-not $cleanExit){throw 'UI exited without recording its completed update shutdown'}
- $lease=Join-Path $env:USERPROFILE '.FeiChuanToolbox\toolbox-maintenance.lock'
+ $lease=Join-Path ($install+'.Data') 'toolbox-maintenance.lock'
  $exclusive=[IO.File]::Open($lease,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
  $exclusive.Dispose()
  $result.Cases+=@{Name='CooperativeCurrentUiExit';ExitCode=$exit;FilesVerified=(Verify-Manifest);ForceExitUsed=$false;DatabaseLeaseReleased=$true}
 
  $coordinator='C:\TestScripts\Upgrade-Coordinator.ps1';$receipt=Join-Path $output 'abandoned-prepare.json'
- & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $coordinator -Action Prepare -Target $install -Manifest (Join-Path $install 'files.sha256') -ResultFile $receipt -InstallerPid $PID -AllowExit
+ & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $coordinator -Action Prepare -Target $install -DataDirectory ($install+'.Data') -Manifest (Join-Path $install 'files.sha256') -ResultFile $receipt -InstallerPid $PID -AllowExit
  if($LASTEXITCODE -ne 0){throw 'Could not prepare abandoned-update fixture'}
  $gate=Join-Path $install '.toolbox-installing.json'
  $blockedStart=[Diagnostics.ProcessStartInfo]::new()

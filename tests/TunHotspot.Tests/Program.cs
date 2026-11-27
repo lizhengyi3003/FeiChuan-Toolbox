@@ -25,6 +25,8 @@ void Rejected(Action action,string message){try{action();}catch(Exception ex)whe
 var root=Path.Combine(Path.GetTempPath(),"TunHotspot-tests-"+Guid.NewGuid().ToString("N"));
 try
 {
+ SnapshotHistoryTests.Run(root, Check);
+ if (args is ["--snapshot-history"]) return;
  var installRoot=Path.Combine(root,"installed");Directory.CreateDirectory(Path.Combine(installRoot,"Engine"));
  string uiFixture=Path.Combine(installRoot,"TunHotspot.exe"),engineFixture=Path.Combine(installRoot,"Engine","TunHotspot.Engine.exe");
  Check(SetupGate.InstallRoot(uiFixture)==installRoot&&SetupGate.InstallRoot(engineFixture)==installRoot,"界面与 Engine 使用同一安装锁目录");
@@ -113,17 +115,13 @@ try
      await monitor.StopAsync();
      Check(await monitor.ScanNow() is null && monitor.State == "已停止", "已停止的监测器拒绝排入新的扫描");
  }
- var migrationSource=Path.Combine(root,"migration-source");var migrationTarget=Path.Combine(root,"migration-target");var originalStore=new ToolboxStore(migrationSource);originalStore.Set("migrationMarker","preserved");
- UserDataMigration.Ensure(migrationTarget,migrationSource);Check(new ToolboxStore(migrationTarget,true).Get<string>("migrationMarker")=="preserved"&&File.Exists(Path.Combine(migrationSource,"toolbox.db")),"在线迁移核验副本且保留旧数据库");
- var badSource=Path.Combine(root,"bad-migration");Directory.CreateDirectory(badSource);File.WriteAllText(Path.Combine(badSource,"toolbox.db"),"broken");var badTarget=Path.Combine(root,"bad-target");
- try{UserDataMigration.Ensure(badTarget,badSource);throw new Exception("bad migration accepted");}catch(Exception ex)when(ex is Microsoft.Data.Sqlite.SqliteException or InvalidDataException){Check(!File.Exists(Path.Combine(badTarget,"toolbox.db")),"损坏旧库不会被当成空库迁移");}
  string verifiedBackup=store.CreateVerifiedBackup();using(var backupDb=new Microsoft.Data.Sqlite.SqliteConnection("Data Source="+verifiedBackup)){backupDb.Open();using var check=backupDb.CreateCommand();check.CommandText="PRAGMA integrity_check";Check(check.ExecuteScalar() as string=="ok","在线备份通过完整性核验");}
  using(var backupStop=new CancellationTokenSource())
  {
   Check(File.Exists(store.CreateVerifiedBackup(backupStop.Token)),"可取消的分批备份通过完整性核验");
   backupStop.Cancel();
   try { store.CreateVerifiedBackup(backupStop.Token); throw new Exception("已取消的备份仍启动"); }
-  catch(OperationCanceledException) { Check(true,"退出时跳过尚未启动的后台数据库备份"); }
+  catch(OperationCanceledException) { Check(true,"取消令牌已取消时不创建手动备份"); }
  }
  var restoreRoot=Path.Combine(root,"restore-fixture");var restoreStore=new ToolboxStore(restoreRoot);restoreStore.Set("restoreMarker","before");restoreStore.CreateVerifiedBackup();File.WriteAllText(Path.Combine(restoreRoot,"toolbox.db"),"damaged fixture");string originalArchive=DatabaseRecovery.RestoreLatest(restoreRoot);
  Check(new ToolboxStore(restoreRoot,true).Get<string>("restoreMarker")=="before"&&File.ReadAllText(Path.Combine(originalArchive,"toolbox.db"))=="damaged fixture","恢复有效备份并完整保留损坏原件");

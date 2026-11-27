@@ -19,7 +19,8 @@ public sealed class ToolboxStore
         // never leave a pooled connection pointing at a replaced database generation.
         _connection = new SqliteConnectionStringBuilder { DataSource = Path.Combine(Root, "toolbox.db"), DefaultTimeout = 10, Pooling = false }.ToString();
         // Check a future schema through a read-only connection before WAL or DDL changes.
-        if (File.Exists(Path.Combine(Root, "toolbox.db")))
+        bool existing = File.Exists(Path.Combine(Root, "toolbox.db"));
+        if (existing)
         {
             for(int retry=0;;retry++)
             {
@@ -34,6 +35,11 @@ public sealed class ToolboxStore
         }
         using var db = Open();
         using var command = db.CreateCommand();
+        if (!existing)
+        {
+            command.CommandText = "PRAGMA auto_vacuum=INCREMENTAL";
+            command.ExecuteNonQuery();
+        }
         command.CommandText = """
             PRAGMA journal_mode=DELETE;
             CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -50,9 +56,18 @@ public sealed class ToolboxStore
             CREATE TABLE IF NOT EXISTS decision_history (id TEXT PRIMARY KEY, entryId TEXT NOT NULL, time TEXT NOT NULL, data TEXT NOT NULL);
             """;
         command.ExecuteNonQuery();
+        command.CommandText = SnapshotHistory.Schema;
+        command.ExecuteNonQuery();
         var version = Get<string>("schema");
         if (version is not null && version != "1") throw new InvalidDataException("数据库版本不兼容，未修改现有数据。");
         Set("schema", "1");
+        bool overCapacity;
+        using (var transaction = db.BeginTransaction())
+        {
+            overCapacity = SnapshotHistory.TrimCapacity(db, transaction);
+            transaction.Commit();
+        }
+        if (overCapacity) ReclaimSnapshotPages(db, all: true);
     }
     private void ProbeExisting(bool verifyIntegrity)
     {
@@ -144,7 +159,7 @@ public sealed class ToolboxStore
             File.Move(partial, target);
             partial = null;
             new DiagnosticLog(Root).Event("数据库", "信息", "已生成并核验数据库备份", Path.GetFileName(target));
-            foreach (string old in Directory.GetFiles(folder, "toolbox-*.db").OrderDescending().Skip(5))
+            foreach (string old in Directory.GetFiles(folder, "toolbox-*.db").Where(path => !path.Equals(target, StringComparison.OrdinalIgnoreCase)))
                 try { File.Delete(old); } catch (IOException) { }
             return target;
         }
@@ -217,8 +232,24 @@ public sealed class ToolboxStore
     public List<AlertEvent> Alerts => Query("SELECT data FROM alerts").Select(Contract.Decode<AlertEvent>).OrderByDescending(x => x.LastSeen).ToList();
     public List<ObservedEvent> Events(int limit = 1000) => Query("SELECT data FROM events ORDER BY time DESC LIMIT $limit", ("$limit", Math.Clamp(limit, 1, 5000))).Select(Contract.Decode<ObservedEvent>).ToList();
     public List<string> Pending => Query("SELECT id FROM pending");
-    public List<SnapshotSummary> History => Query("SELECT json_object('id',id,'time',time,'count',json_array_length(data,'$.entries')) FROM snapshots ORDER BY time DESC LIMIT 200").Select(Contract.Decode<SnapshotSummary>).ToList();
-    public ScanSnapshot? GetSnapshot(string id) => Query("SELECT data FROM snapshots WHERE id=$id",("$id",id)).Select(Contract.Decode<ScanSnapshot>).FirstOrDefault();
+    public List<SnapshotSummary> History => Query("""
+        SELECT json_object('id',id,'time',time,'count',entry_count)
+        FROM (
+            SELECT id,time,entry_count FROM snapshot_revisions
+            UNION ALL
+            SELECT id,time,json_array_length(data,'$.entries') FROM
+                (SELECT id,time,data FROM snapshots ORDER BY time DESC LIMIT 200)
+        )
+        ORDER BY time DESC LIMIT 200
+        """).Select(Contract.Decode<SnapshotSummary>).ToList();
+
+    public ScanSnapshot? GetSnapshot(string id)
+    {
+        using var db = Open();
+        return SnapshotHistory.Read(db, id)
+            ?? Query("SELECT data FROM snapshots WHERE id=$id", ("$id", id)).Select(Contract.Decode<ScanSnapshot>).FirstOrDefault();
+    }
+
     public void Enqueue(string id) => Execute("DELETE FROM pending_ignore WHERE id=$id; INSERT OR IGNORE INTO pending VALUES($id)", ("$id", id));
     public void RemovePending(string id)
     {var entry=Latest?.Entries.FirstOrDefault(x=>x.Id==id);if(entry is not null)Execute("INSERT INTO pending_ignore VALUES($id,$fingerprint) ON CONFLICT(id) DO UPDATE SET fingerprint=excluded.fingerprint",("$id",id),("$fingerprint",entry.Fingerprint));Execute("DELETE FROM pending WHERE id=$id",("$id",id));}
@@ -318,12 +349,10 @@ public sealed class ToolboxStore
             using var c = db.CreateCommand(); c.Transaction = tx;
             c.CommandText = "INSERT INTO metadata VALUES('latest',$data) ON CONFLICT(key) DO UPDATE SET value=excluded.value";
             c.Parameters.AddWithValue("$data", Contract.Encode(snapshot)); c.ExecuteNonQuery();
-            if (!snapshot.Cancelled && (previous is null || previous.ConfigurationHash != snapshot.ConfigurationHash))
-            {
-                c.CommandText = "INSERT INTO snapshots VALUES($id,$time,$hash,$data)";
-                c.Parameters.AddWithValue("$id", snapshot.Id); c.Parameters.AddWithValue("$time", snapshot.Finished.ToString("O")); c.Parameters.AddWithValue("$hash", snapshot.ConfigurationHash); c.ExecuteNonQuery();
-            }
+            bool overCapacity = (previous is null || previous.ConfigurationHash != snapshot.ConfigurationHash) &&
+                SnapshotHistory.Write(db, tx, snapshot);
             tx.Commit();
+            if (overCapacity) ReclaimSnapshotPages(db, all: true);
         }
         EvaluateWatches(snapshot);
         ReconcilePending(snapshot);
@@ -384,6 +413,16 @@ public sealed class ToolboxStore
     {
         Execute("DELETE FROM events WHERE time < $time", ("$time", DateTimeOffset.UtcNow.AddDays(-7).ToString("O")));
         Execute("DELETE FROM snapshots WHERE time < $time", ("$time", DateTimeOffset.UtcNow.AddDays(-30).ToString("O")));
+        using (var db = Open())
+        {
+            bool overCapacity;
+            using (var transaction = db.BeginTransaction())
+            {
+                overCapacity = SnapshotHistory.Prune(db, transaction, keepRecent: false);
+                transaction.Commit();
+            }
+            ReclaimSnapshotPages(db, all: overCapacity);
+        }
         var size = Query("SELECT CAST(COALESCE(SUM(length(data)),0) AS TEXT) FROM events").FirstOrDefault();
         if (long.TryParse(size, out var bytes) && bytes > 450L * 1024 * 1024)
         {
@@ -391,6 +430,22 @@ public sealed class ToolboxStore
             Set("eventRetention", "高流量事件达到容量阈值，已清理最旧记录；长期告警不受影响。");
         }
     }
+    private void ReclaimSnapshotPages(SqliteConnection db, bool all)
+    {
+        try
+        {
+            using var vacuum = db.CreateCommand();
+            vacuum.CommandText = all ? "PRAGMA incremental_vacuum" : "PRAGMA incremental_vacuum(256)";
+            using var progress = vacuum.ExecuteReader();
+            while (progress.Read()) { }
+        }
+        catch (SqliteException error) when (error.SqliteErrorCode is 5 or 6)
+        {
+            // Trimming already committed. A concurrent reader can delay returning the pages to disk.
+            new DiagnosticLog(Root).Record("回收快照空闲页", error);
+        }
+    }
+
     public static WatchRule Watch(StartupEntry entry) => new() { EntryId = entry.Id, Provider = entry.Provider, Name = entry.Name, Expected = entry.ControlValue, OwnerSid = entry.OwnerSid, OneShot = entry.OneShot };
     public AnalysisBatch CreateBatch()
     {

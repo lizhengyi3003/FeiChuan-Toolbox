@@ -59,8 +59,7 @@ internal sealed class LaunchFailureWindow : Window
             _ => "无法读取本地数据库，请查看下面的错误及诊断记录。"
         } : "初始化没有完成，请查看下面的错误及诊断记录。";
         bool qa=Environment.GetCommandLineArgs().Contains("--qa-capture");
-        string root=qa?Path.Combine(Path.GetTempPath(),"TunHotspot-QA",Environment.ProcessId.ToString()):TunHotspot.Core.DataPaths.UserRoot;
-        var record=new TunHotspot.Core.DiagnosticLog(root).Record(qa?"程序初始化（隔离测试）":"程序初始化",cause,true);
+        var record=new TunHotspot.Core.DiagnosticLog(AppLog.DataRoot).Record(qa?"程序初始化（隔离测试）":"程序初始化",cause,true);
         _details.Text = $"错误编号：{record.Id}\n{record.Time.ToLocalTime():yyyy-MM-dd HH:mm:ss}\n{cause.GetType().Name}\n{TunHotspot.Core.DiagnosticLog.Clean(cause.Message)}\n{record.Code}\n\n{record.Guidance}\n诊断文件：{record.LogPath}\n{record.StorageWarning}";
     }
 

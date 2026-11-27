@@ -1,6 +1,6 @@
 # 飞船的小工具箱 · FeiChuan Toolbox
 
-当前版本 **1.6.0** · Windows 11 x64 · WinUI 3 / .NET 10
+当前版本 **1.6.4** · Windows 11 x64 · WinUI 3 / .NET 10
 
 [![CI](https://github.com/lizhengyi3003/FeiChuan-Toolbox/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhengyi3003/FeiChuan-Toolbox/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/lizhengyi3003/FeiChuan-Toolbox)](https://github.com/lizhengyi3003/FeiChuan-Toolbox/releases/latest)
@@ -15,7 +15,7 @@ A Windows 11 desktop toolbox for startup inspection and guarded controls, hotspo
 从 [GitHub Releases](https://github.com/lizhengyi3003/FeiChuan-Toolbox/releases/latest) 获取安装器或完整便携 ZIP。发布包包含 .NET、WinUI 和 app-local VC++ 运行文件，使用者无需安装 SDK、Visual Studio 或开发工具。只复制单个 exe 无法运行。
 
 - 支持 Windows 11 **x64**；最低声明 22000，已做干净系统验证的构建为 26100。其他构建和硬件仍须实测。
-- 安装默认为当前用户；受保护目录、机器组件和系统修改按需申请 UAC。升级会协调本目录进程、备份、替换、逐文件核验，并在失败时保留恢复入口。
+- 安装启动时由 Inno Setup 提供当前用户与所有用户两种模式。安装到受保护目录时选择“为所有用户安装”，Windows 会在向导开始前请求授权。升级会协调本目录进程、备份、替换、逐文件核验，并在失败时保留恢复入口。
 - 当前二进制**未做 Authenticode 签名**。发布页提供 `SHA256SUMS.txt`、同提交源码、依赖 SBOM 和 GitHub 构建证明；这些不等于 Windows 代码签名。
 - Release 附 WinGet/Scoop 清单供审核和本地使用；目前不代表已上架社区源、Microsoft Store 或 NuGet。
 
@@ -40,7 +40,7 @@ A Windows 11 desktop toolbox for startup inspection and guarded controls, hotspo
 
 ## 数据与安全
 
-用户数据在 `%USERPROFILE%\.FeiChuanToolbox`，机器组件数据在受控 `%ProgramData%\TunHotspot`。账号、订阅和登录凭据不随通用模板迁移；DPAPI 原始备份通常只能在原电脑原用户上下文恢复。日志在本地保存，不自动上传。
+安装向导中的数据目录默认跟随安装盘，也可自行选择，机器组件数据在受控 `%ProgramData%\TunHotspot`。账号、订阅和登录凭据不随通用模板迁移；DPAPI 原始备份通常只能在原电脑原用户上下文恢复。日志在本地保存，不自动上传。
 
 报告问题前检查命令参数、路径、图片和日志是否包含私人信息。普通问题使用 [Issues](https://github.com/lizhengyi3003/FeiChuan-Toolbox/issues/new/choose)，安全漏洞通过 [私密报告](https://github.com/lizhengyi3003/FeiChuan-Toolbox/security/advisories/new)。详见 [安全策略](SECURITY.md)、[安全审查](docs/SECURITY-REVIEW.md)。
 

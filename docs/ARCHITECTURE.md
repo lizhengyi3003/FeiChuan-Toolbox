@@ -1,6 +1,6 @@
 # 架构与文件职责
 
-当前产品版本 1.6.0；当前产物布局以 Artifacts.ps1 和 PROJECT-STRUCTURE.md 为准，历史构建不参与编译或分发。
+当前产品版本 1.6.4；当前产物布局以 Artifacts.ps1 和 PROJECT-STRUCTURE.md 为准，历史构建不参与编译或分发。
 
 三个产品工程与功能检查的编译依赖为 WinUI → Core、Engine → Core、Tests → Core；隔离集成夹具也依赖 Core，模拟客户端独立编译。Core 不引用 WinUI 或 Engine；它使用 Windows 注册表、SCM、WMI 等接口，并非跨平台库。
 
@@ -37,7 +37,7 @@ flowchart LR
 | 协议 | Core/Contracts | 版本、严格序列化、有类型有限 IPC |
 | 引擎入口与复核 | Engine/Program.cs、Auditing | 模式分派、单次 UAC、两轮只读复核 |
 | 机器组件 | Engine/Installation、Monitoring | 受控版本安装、目录权限、SCM 生命周期、授权 owner、后台采集 |
-| 安装与更新 | installer/Upgrade-Coordinator.ps1、Core/Installation | 安装器权限与进程协调、程序文件备份与恢复、更新期间启动拦截 |
+| 安装与更新 | installer/scripts/Upgrade-Coordinator.ps1、Core/Installation | 安装器权限与进程协调、程序文件备份与恢复、更新期间启动拦截 |
 | 实际控制 | Engine/StartupControl | 重读核对、备份、有限单项修改、回读、恢复 |
 | AI 桥接 | Engine/Mcp | 只读队列/证据、合法建议回写，无系统控制或任意命令接口 |
 | 验证 | tests/、tools/test/ | 功能检查、隔离夹具、协议边界、WinUI 自动化和沙盒验证 |
@@ -54,7 +54,7 @@ Kumiryo 设置：用户预览 → 独立工作进程（可经 UAC）→ 发起 S
 
 配置迁移不依赖启动数据库。当前用户目录 `KumiryoConfiguration/operations/<编号>` 保存请求、脱敏状态及 DPAPI 原始/目标副本；原始凭据不会放入明文操作日志或通用分发包。配置模板作为 Core 的资源随同分发。
 
-用户数据、统一诊断和配置迁移记录在 `%USERPROFILE%/.FeiChuanToolbox`；原 AppData 目录保留供迁移与核验，兼容操作日志仍写 `%LOCALAPPDATA%/TunHotspot.WinUI`。机器程序在 %ProgramFiles%/TunHotspot/Monitor，机器数据在 %ProgramData%/TunHotspot/Monitor，操作原始备份在 %ProgramData%/TunHotspot/Actions。受控备份不随便携包迁移。
+用户数据、统一诊断和配置迁移记录在安装时选定的数据目录；兼容操作日志也在该数据目录。机器程序在 %ProgramFiles%/TunHotspot/Monitor，机器数据在 %ProgramData%/TunHotspot/Monitor，操作原始备份在 %ProgramData%/TunHotspot/Actions。受控备份不随便携包迁移。
 
 ## 配置与文档的依据
 
@@ -81,7 +81,7 @@ Kumiryo 设置：用户预览 → 独立工作进程（可经 UAC）→ 发起 S
 
 ## 稳定性与故障边界
 
-`UserDataMigration` 使用 SQLite 在线备份迁移健康旧库，不移动仍可能被旧进程打开的数据库；损坏旧库不自动变成空库。固定的当前用户目录避开从打包宿主启动时的 AppData 虚拟化差异。UI、MCP 和管理员工作进程均用同一 DataPaths。连接解析实际目录、关闭连接池，使用 DELETE 日志与 FULL 刷盘。
+安装器记录本账户的数据目录，默认在程序目录旁。UI、MCP 和管理员工作进程使用同一个 DataPaths 解析入口。便携版默认在解压目录旁保存数据。所有用户安装中，其他 Windows 账户使用自己的 `%USERPROFILE%/.FeiChuanToolbox-AllUsers` 数据目录。旧用户目录不再自动迁移。SQLite 连接关闭连接池，使用 DELETE 日志与 FULL 刷盘。快照提交引用经压缩的内容寻址入口对象，历史按最多 200 次提交、30 天和压缩数据 1 GiB 清理，超限从最早的快照开始淘汰；事务内回收无引用对象，定时归还空闲页。整库备份仅手动触发并保留最近一份。
 
 `DatabaseRecovery` 只恢复最近的完整性/结构核验有效备份。持有排他维护锁，保留替换前原件；非空 WAL/回滚旁日志、文件仍占用、加密属性不匹配均阻止自动恢复。用户必须预览确认，健康数据库不提供覆盖恢复。
 

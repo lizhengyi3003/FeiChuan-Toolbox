@@ -91,7 +91,7 @@ public sealed partial class ToolboxWindow : Window
             Card(Column(Text("包含开机的持续监测",18,true),Text(_startupUnavailable?"启动数据库当前不可用；此处的启动管理操作暂不可用，后台机器组件独立运行。":_serviceConnected?"机器组件已连接；关闭界面后仍采集，通知由登录托盘进程发送。":"尚未连接机器组件。当前提供普通权限范围，手动全局扫描可申请管理员采集。"),
                 Row(StartupOnly(AsyncButton("安装/更新开机采集组件",()=>Component(true))),StartupOnly(AsyncButton("卸载采集组件",()=>Component(false))),StartupOnly(AsyncButton(_settings.Paused?"恢复监测":"暂停监测",Pause))),
                 Text("安装时会弹 UAC，并添加本软件的机器服务和当前用户登录托盘入口。卸载组件保留历史数据及受控版本文件供恢复。",12))),
-            Card(Column(Text("分析与数据",18,true),Text("应用设置：preferences.json；启动扫描与历史：toolbox.db。两者位于当前用户本地目录；机器采集日志位于管理员控制的 ProgramData。"),Row(StartupOnly(AsyncButton("连接 Codex",ConnectCodex)),StartupOnly(AsyncButton("导出扫描报告",ExportReport)),Button("打开应用数据目录",()=>Process.Start(new ProcessStartInfo(DataPaths.UserRoot){UseShellExecute=true}))),
+            Card(Column(Text("分析与数据",18,true),Text($"应用设置：preferences.json；启动扫描与历史：toolbox.db。当前数据目录：{DataPaths.UserRoot}；机器采集日志位于管理员控制的 ProgramData。"),Row(StartupOnly(AsyncButton("连接 Codex",ConnectCodex)),StartupOnly(AsyncButton("导出扫描报告",ExportReport)),Button("打开应用数据目录",()=>Process.Start(new ProcessStartInfo(DataPaths.UserRoot){UseShellExecute=true}))),
                 Text("Windows 11 x64 · 自包含发布 · AI 分析可选。常见登录入口、第三方任务及普通服务支持单项控制；驱动和特殊入口显示具体限制与系统配置入口。",12))),
             Card(Column(Text("Microsoft Store 与网络",18,true),Row(networkCheck,proxyFix,storeCache),networkText)),
             Card(Column(Text("日志查看器",18,true),new LogViewer(_diagnostics,this))),
@@ -116,7 +116,7 @@ public sealed partial class ToolboxWindow : Window
                         await restore;
                         if (!_exiting && Application.Current is App app) app.RetryMainWindow();
                     }
-                })),Text("重试只重新读取。数据库采用事务刷盘、启动核验、每六小时内首次打开及正常退出备份，保留最近五份有效备份；原始修复归档不自动删除。",12))));
+                })),Text("重试只重新读取。数据库采用事务刷盘和启动核验。手动备份保留最近一份有效副本。",12))));
         body.Padding=new Thickness(24,8,24,24);body.Spacing=16;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(body,"Settings.Content");
         return Scroll(body);

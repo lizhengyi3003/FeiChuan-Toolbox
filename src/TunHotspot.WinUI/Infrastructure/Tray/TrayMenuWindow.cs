@@ -6,7 +6,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
-using System.ComponentModel;
 using System.Runtime.InteropServices;
 using TunHotspot.Core;
 using Windows.Graphics;
@@ -21,7 +20,15 @@ internal sealed class TrayMenuWindow : Window
     private const int MenuWidth = 248;
     private const int ItemHeight = 36;
     private const int SeparatorHeight = 7;
-    private const int FrameHeight = 10;
+    private const int FrameHeight = 12;
+    private const uint CornerPreferenceAttribute = 33;
+    private const uint BorderColorAttribute = 34;
+    private const uint RoundedCorners = 2;
+    private const uint NoFrameBorder = 0xFFFFFFFE;
+    private const uint CalculateClientArea = 0x0083;
+    private const uint FrameChangedWithoutMoving = 0x0037;
+    private const nuint FrameSubclassId = 1;
+    private static readonly SubclassProc FrameProcedure = ProcessFrameMessage;
     private readonly Border _root;
     private readonly StackPanel _rows = new();
     private readonly List<Button> _items = [];
@@ -43,9 +50,15 @@ internal sealed class TrayMenuWindow : Window
         _root = (Border)XamlReader.Load("""
             <Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
-                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="4"/>
+                    Padding="6"/>
             """);
+        if (Microsoft.UI.Composition.SystemBackdrops.DesktopAcrylicController.IsSupported() &&
+            !new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast &&
+            new Windows.UI.ViewManagement.UISettings().AdvancedEffectsEnabled)
+        {
+            SystemBackdrop = new DesktopAcrylicBackdrop();
+            _root.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        }
         _root.RequestedTheme = state.Settings.Theme switch
         {
             "浅色" => ElementTheme.Light,
@@ -75,7 +88,11 @@ internal sealed class TrayMenuWindow : Window
             if (args.WindowActivationState != WindowActivationState.Deactivated) _activated = true;
             else if (_activated) Dismiss();
         };
-        Closed += (_, _) => _closed = true;
+        Closed += (_, _) =>
+        {
+            _closed = true;
+            _ = RemoveWindowSubclass(WinRT.Interop.WindowNative.GetWindowHandle(this), FrameProcedure, FrameSubclassId);
+        };
     }
 
     private Button Add(string text, string glyph, string command, string access, bool enabled = true)
@@ -91,7 +108,7 @@ internal sealed class TrayMenuWindow : Window
         {
             Content = row, FontSize = 14, Height = ItemHeight, Padding = new Thickness(8, 0, 8, 0),
             HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left,
-            VerticalContentAlignment = VerticalAlignment.Center, IsEnabled = enabled, AccessKey = access
+            VerticalContentAlignment = VerticalAlignment.Center, CornerRadius = new CornerRadius(8), IsEnabled = enabled, AccessKey = access
         };
         if (Application.Current.Resources.TryGetValue("SubtleButtonStyle", out var style) && style is Style subtle)
             button.Style = subtle;
@@ -134,17 +151,16 @@ internal sealed class TrayMenuWindow : Window
         }
         left = Math.Clamp(left, area.X, Math.Max(area.X, area.X + area.Width - width));
         top = Math.Clamp(top, area.Y, Math.Max(area.Y, area.Y + area.Height - height));
+        bool frameRemoved = SetWindowSubclass(window, FrameProcedure, FrameSubclassId, 0)
+            && SetWindowPos(window, 0, 0, 0, 0, 0, FrameChangedWithoutMoving);
         AppWindow.MoveAndResize(new RectInt32(left, top, width, height));
-        int corner = (int)Math.Ceiling(16 * scale);
-        nint region = CreateRoundRectRgn(0, 0, width + 1, height + 1, corner, corner);
-        if (region == 0) throw new Win32Exception("无法创建托盘菜单区域。");
-        if (SetWindowRgn(window, region, true) == 0)
-        {
-            _ = DeleteObject(region);
-            throw new Win32Exception("无法设置托盘菜单区域。");
-        }
+        // Let DWM clip the acrylic surface itself so its edge and window corners share a single outline.
+        uint corners = RoundedCorners;
+        uint border = NoFrameBorder;
+        int cornerResult = DwmSetWindowAttribute(window, CornerPreferenceAttribute, ref corners, sizeof(uint));
+        int borderResult = DwmSetWindowAttribute(window, BorderColorAttribute, ref border, sizeof(uint));
         Activate();
-        AppLog.Write("tray-menu-opened", new { framework = "WinUI 3", control = "TrayMenuWindow" });
+        AppLog.Write("tray-menu-opened", new { framework = "WinUI 3", control = "TrayMenuWindow", frameRemoved, cornerResult, borderResult });
     }
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs args)
@@ -193,9 +209,19 @@ internal sealed class TrayMenuWindow : Window
         }
     }
 
-    [DllImport("gdi32.dll")] private static extern nint CreateRoundRectRgn(int left, int top, int right, int bottom, int width, int height);
-    [DllImport("gdi32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool DeleteObject(nint region);
-    [DllImport("user32.dll")] private static extern int SetWindowRgn(nint window, nint region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
+    private static nint ProcessFrameMessage(nint window, uint message, nint wParam, nint lParam, nuint id, nuint data)
+        => message == CalculateClientArea ? 0 : DefSubclassProc(window, message, wParam, lParam);
+
+    private delegate nint SubclassProc(nint window, uint message, nint wParam, nint lParam, nuint id, nuint data);
+
+    [DllImport("comctl32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowSubclass(nint window, SubclassProc procedure, nuint id, nuint data);
+    [DllImport("comctl32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RemoveWindowSubclass(nint window, SubclassProc procedure, nuint id);
+    [DllImport("comctl32.dll")] private static extern nint DefSubclassProc(nint window, uint message, nint wParam, nint lParam);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(nint window, nint insertAfter, int x, int y, int width, int height, uint flags);
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(nint window, uint attribute, ref uint value, uint size);
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint window);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern nint FindWindow(string className, string? title);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindowVisible(nint window);

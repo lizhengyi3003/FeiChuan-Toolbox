@@ -15,13 +15,9 @@ public static class ToolboxTrayUiNative {
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window,out uint process);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr window,StringBuilder text,int count);
  [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window,int command);
- [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr window,IntPtr region);
- [DllImport("gdi32.dll")] private static extern IntPtr CreateRectRgn(int left,int top,int right,int bottom);
- [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr region);
  [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
  [DllImport("user32.dll")] public static extern bool GetCursorPos(out Point point);
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
- public static bool MenuRegionIsVisible(IntPtr window){var region=CreateRectRgn(0,0,0,0);if(region==IntPtr.Zero)return false;try{return GetWindowRgn(window,region)>1;}finally{DeleteObject(region);}}
  public static void HideFixtureMainWindow(int process,IntPtr menu){EnumWindows((window,value)=>{uint owner;GetWindowThreadProcessId(window,out owner);var title=new StringBuilder(512);GetWindowText(window,title,512);if(owner==process&&window!=menu&&title.ToString()=="飞船的小工具箱")ShowWindow(window,0);return true;},IntPtr.Zero);}
  public static IntPtr Find(int process){IntPtr found=IntPtr.Zero;EnumWindows((window,value)=>{uint owner;GetWindowThreadProcessId(window,out owner);var title=new StringBuilder(512);GetWindowText(window,title,512);if(owner==process&&title.ToString()=="飞船的小工具箱 · 托盘菜单"){found=window;return false;}return true;},IntPtr.Zero);return found;}
 }
@@ -44,8 +40,6 @@ try{
         }catch [Windows.Automation.ElementNotAvailableException]{}
     }while(-not $settings -and (Get-Date) -lt $deadline)
     if(-not $settings){throw '原生菜单未完成加载。'}
-    $result.MenuRegionIsVisible=[ToolboxTrayUiNative]::MenuRegionIsVisible($handle)
-    if(-not $result.MenuRegionIsVisible){throw '托盘窗口未直接绘制菜单区域。'}
     $items=$window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::MenuItem))
     $names=@($items | ForEach-Object {$_.Current.Name})
     $result.Buttons=$names
@@ -84,6 +78,11 @@ try{
     $settings.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
     if(-not $process.WaitForExit(10000)){throw '菜单点击后 QA 进程未正常结束。'}
     $log=Join-Path ([IO.Path]::GetTempPath()) ('TunHotspot-QA\'+$process.Id+'\legacy-operations\operations.jsonl')
+    $frame=Get-Content -LiteralPath $log | ForEach-Object {$_ | ConvertFrom-Json} |
+        Where-Object action -eq 'tray-menu-opened' | Select-Object -Last 1
+    $result.MenuFrameConfigured=$null -ne $frame -and $null -ne $frame.details.cornerResult -and
+        [bool]$frame.details.frameRemoved -and $null -ne $frame.details.borderResult -and $frame.details.cornerResult -eq 0 -and $frame.details.borderResult -eq 0
+    if(-not $result.MenuFrameConfigured){throw '系统未接受托盘圆角或无边框设置。'}
     $result.CallbackFound=[bool](Get-Content -LiteralPath $log -Tail 12 | Where-Object {$_ -match 'qa-tray-invoked' -and $_ -match 'settings'})
     if(-not $result.CallbackFound){throw '未收到真实 WinUI 菜单点击回调。'}
     $result.Success=$true

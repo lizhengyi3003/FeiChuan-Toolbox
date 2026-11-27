@@ -19,7 +19,7 @@ TunHotspot/
 │  │  │  ├─ Analysis/             # 分类、来源、筛选与分析结果模型
 │  │  │  ├─ Monitoring/           # 持续观察与注册表订阅
 │  │  │  └─ Control/              # 单项控制请求、备份模型及控制策略
-│  │  ├─ Storage/                 # SQLite、事务恢复、迁移与数据路径
+│  │  ├─ Storage/                 # SQLite、事务恢复、快照历史与数据路径
 │  │  ├─ Settings/                # 独立偏好与本应用登录启动
 │  │  ├─ Diagnostics/             # 统一诊断
 │  │  ├─ Installation/            # 更新锁与本软件退出事件
@@ -59,7 +59,10 @@ TunHotspot/
 │     ├─ ui/                     # 本机隔离 QA 实例与 UI Automation
 │     ├─ sandbox/                # Sandbox 启动器和仅来宾可运行的脚本
 │     └─ local/                  # 带正式安装保护的宿主安装测试
-├─ installer/                    # Inno 定义、共享原生提权模块与内嵌 PowerShell 升级协调器
+├─ installer/
+│  ├─ TunHotspot.iss              # Inno 向导、安装选项与卸载入口
+│  ├─ inno/InstallMode.iss       # Inno 安装范围与权限声明
+│  └─ scripts/                   # 内嵌 PowerShell 安装事务
 ├─ docs/                         # 当前架构/开发/验收索引
 │  ├─ guides/                    # 使用手册与功能范围
 │  ├─ reports/                   # 有日期的修复和工程报告
@@ -85,7 +88,7 @@ TunHotspot/
 
 产品版本以 `Directory.Build.props` 为准。历史报告和归档保留当时版本，Kumiryo、依赖、协议和数据库维护各自版本。
 
-运行数据 `%USERPROFILE%/.FeiChuanToolbox` 和受控 `%ProgramData%/TunHotspot` 不属于仓库整理范围。不能为了清理项目目录而删除用户库、原始备份、系统服务或安装版文件。
+安装时选定的用户数据目录 和受控 `%ProgramData%/TunHotspot` 不属于仓库整理范围。不能为了清理项目目录而删除用户库、原始备份、系统服务或安装版文件。
 
 ## 入口
 

@@ -60,7 +60,7 @@ public static class KumiryoRestrictedQa {
             $kill=Get-Content -LiteralPath $killFile -Raw -Encoding UTF8 | ConvertFrom-Json
             $validJob=[Guid]::Empty
             if(-not [Guid]::TryParseExact($kill.jobId,'N',[ref]$validJob)){throw 'Invalid fixture job identity.'}
-            $reportPath=Join-Path $env:USERPROFILE ('.FeiChuanToolbox\KumiryoConfiguration\operations\'+$kill.jobId+'\report.json')
+            $reportPath=Join-Path ($driver+'.Data') ('KumiryoConfiguration\operations\'+$kill.jobId+'\report.json')
             $jobReport=Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8 | ConvertFrom-Json
             $owned=[Diagnostics.Process]::GetProcessById([int]$kill.pid)
             if($owned.MainModule.FileName -eq 'C:\Application\Engine\TunHotspot.Engine.exe' -and $jobReport.id -eq $kill.jobId -and [int]$jobReport.workerPid -eq $owned.Id -and [long]$jobReport.workerStarted -eq $owned.StartTime.ToUniversalTime().Ticks){

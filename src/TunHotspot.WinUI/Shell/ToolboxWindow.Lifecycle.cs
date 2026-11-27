@@ -37,10 +37,9 @@ public sealed partial class ToolboxWindow : Window
     private void AdvancedEffectsChanged(UISettings sender, object args) => DispatcherQueue.TryEnqueue(() => { if (!_exiting) ApplyAppearance(); });
     private void HighContrastChanged(AccessibilitySettings sender, object args) => DispatcherQueue.TryEnqueue(() => { if (!_exiting) ApplyAppearance(); });
 
-    internal void StartBackgroundWork()
+    internal void StartTray()
     {
-        if (_qa || _exiting) return;
-        NotificationBridge.Register();
+        if ((_qa && !_startupLoading) || _exiting || _tray is not null) return;
         try
         {
             _tray = new(WinRT.Interop.WindowNative.GetWindowHandle(this));
@@ -54,32 +53,23 @@ public sealed partial class ToolboxWindow : Window
             _tray.FontsChanged += () => { if (!_exiting && _fontLoad is not null) _ = LoadFonts(); };
             _tray.Resumed += () =>
             {
-                if (_exiting || _startupUnavailable) return;
+                if (_exiting || _startupLoading || _startupUnavailable) return;
                 _monitor.Reconcile("登录界面或电源恢复");
                 _ = Poll();
             };
         }
         catch (Exception ex) { Tell("托盘不可用", ex.Message, InfoBarSeverity.Warning); }
+    }
+
+    internal void StartBackgroundWork()
+    {
+        if (_qa || _exiting) return;
+        StartTray();
+        NotificationBridge.Register();
         if (_startupStore is null) return;
         _poll.Start();
         _monitor.Start();
         _ = Poll();
-        var stop = _windowStop.Token;
-        _startupBackup = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(20), stop).ConfigureAwait(false);
-                _store.ReconcilePending();
-                stop.ThrowIfCancellationRequested();
-                string folder = Path.Combine(_store.Root, "database-backups");
-                if (!Directory.Exists(folder) || !Directory.EnumerateFiles(folder, "toolbox-*.db")
-                    .Any(file => File.GetLastWriteTimeUtc(file) > DateTime.UtcNow.AddHours(-6)))
-                    _store.CreateVerifiedBackup(stop);
-            }
-            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
-            catch (Exception ex) { _diagnostics.Record("后台数据库维护", ex); }
-        });
     }
 
     internal Task ShutdownAsync(bool forUpdate = false, bool forRetry = false) =>
@@ -111,7 +101,7 @@ public sealed partial class ToolboxWindow : Window
                     catch (Exception ex) { _diagnostics.Record("关闭时保存应用设置", ex); }
                 });
             }
-            await Task.WhenAll(savePreferences, _pollTask, _startupBackup, _databaseWork,
+            await Task.WhenAll(savePreferences, _pollTask, _databaseWork,
                 _hotspot.StopAsync().AsTask(), _startupMonitor?.StopAsync() ?? Task.CompletedTask);
         }
         catch (Exception ex) { _diagnostics.Record("工具箱退出", ex); }

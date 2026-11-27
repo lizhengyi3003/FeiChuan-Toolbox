@@ -19,13 +19,13 @@ AppVersion={#AppVersion}
 AppVerName=飞船的小工具箱 {#AppVersion}
 AppPublisher=飞船的小工具箱
 VersionInfoDescription=飞船的小工具箱安装程序
-DefaultDirName={localappdata}\Programs\TunHotspot
+DefaultDirName={code:DefaultInstallDirectory}
 DefaultGroupName=飞船的小工具箱
 UsePreviousGroup=no
 DisableProgramGroupPage=yes
 AllowNoIcons=yes
 DisableDirPage=no
-PrivilegesRequired=lowest
+#include "inno\InstallMode.iss"
 SetupArchitecture=x64
 #ifdef AuthenticodeSigning
 SignTool=FeiChuanAuthenticode
@@ -58,7 +58,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："
 
 [Files]
-Source: "{#ProjectRoot}\installer\Upgrade-Coordinator.ps1"; Flags: dontcopy
+Source: "{#ProjectRoot}\installer\scripts\Upgrade-Coordinator.ps1"; Flags: dontcopy
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "*.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -66,17 +66,16 @@ Name: "{group}\飞船的小工具箱"; Filename: "{app}\TunHotspot.exe"; Working
 Name: "{group}\使用说明"; Filename: "{app}\使用说明.txt"
 Name: "{autodesktop}\飞船的小工具箱"; Filename: "{app}\TunHotspot.exe"; WorkingDir: "{app}"; Tasks: desktopicon; AppUserModelID: "TunHotspot.WinUI"
 
-[Run]
-Filename: "{app}\TunHotspot.exe"; Description: "启动 飞船的小工具箱"; Flags: postinstall nowait skipifsilent unchecked; Check: CanLaunchNormally
-
 [UninstallRun]
 Filename: "{app}\TunHotspot.exe"; Parameters: "--uninstall-user-integration"; Flags: runhidden waituntilterminated; RunOnceId: "TunHotspot.UserIntegration.v1"
 
 [Code]
 var
-  CoordinatorReady, Prepared, Committed, RecoveryComplete, RestartRequested: Boolean;
+  CoordinatorReady, Prepared, Committed, RecoveryComplete: Boolean;
   CoordinatorPath, ResultPath, PayloadPath, OriginalSid, OperationPath, LastCoordMessage, InstallFailureMessage: String;
   InstallMutex: THandle;
+  DataPage: TInputDirWizardPage;
+  PreviousApp: String;
   CoordinationProgress: TOutputMarqueeProgressWizardPage;
   ShowingCoordinationProgress: Boolean;
 
@@ -115,6 +114,19 @@ begin
   CoordinationProgress.Animate;
 end;
 
+const
+  ToolboxUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8EE42691-81B4-4A6F-A115-9961835E1D45}_is1';
+
+function DefaultInstallDirectory(Param: String): String;
+var PreviousDirectory: String;
+begin
+  if IsAdminInstallMode and RegQueryStringValue(HKCU64, ToolboxUninstallKey, 'InstallLocation', PreviousDirectory)
+    and FileExists(AddBackslash(PreviousDirectory) + 'TunHotspot.exe') then
+    Result := RemoveBackslashUnlessRoot(PreviousDirectory)
+  else
+    Result := ExpandConstant('{autopf}\TunHotspot');
+end;
+
 function RunCoordinator(const Mode: String): Integer;
 var Parameters, MessageText: String; ExitCode: Integer; ScriptLock: THandle;
 begin
@@ -134,6 +146,19 @@ begin
   if ScriptLock = THandle(-1) then
   begin LastCoordMessage := '不能锁定已核验的安装协调文件，未替换程序。'; Exit; end;
   try
+    if Mode = 'VerifyOriginalAccount' then
+    begin
+      Parameters := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + AddQuotes(CoordinatorPath) +
+        ' -VerifyAccount -OwnerSid ' + AddQuotes(OriginalSid);
+      Log('Verifying original Windows account using the child exit code');
+      if ExecAsOriginalUser(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Parameters,
+        ExpandConstant('{sys}'), SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+        Result := ExitCode
+      else
+        Log('Original-account verification could not start: ' + IntToStr(ExitCode));
+      Log('Original-account verification result: ' + IntToStr(Result));
+      Exit;
+    end;
     DeleteFile(ResultPath + '.message');
     DeleteFile(ResultPath + '.operation');
     DeleteFile(ResultPath + '.sid');
@@ -143,7 +168,10 @@ begin
       ' -Manifest ' + AddQuotes(PayloadPath) + ' -ResultFile ' + AddQuotes(ResultPath) +
       ' -InstallerPid ' + IntToStr(NativeGetCurrentProcessId);
     if Mode <> 'Identity' then Parameters := Parameters + ' -Target ' + AddQuotes(ExpandConstant('{app}'));
+    if (Mode = 'InspectData') or (Mode = 'Prepare') then
+      Parameters := Parameters + ' -DataDirectory ' + AddQuotes(RemoveBackslashUnlessRoot(Trim(DataPage.Values[0])));
     if OriginalSid <> '' then Parameters := Parameters + ' -OwnerSid ' + AddQuotes(OriginalSid);
+    if IsAdminInstallMode and (Mode <> 'Identity') then Parameters := Parameters + ' -AdminInstallMode';
     if OperationPath <> '' then Parameters := Parameters + ' -Operation ' + AddQuotes(OperationPath);
     if (not WizardSilent) or (ExpandConstant('{param:CLOSEOWNAPPS|0}') = '1') then
       Parameters := Parameters + ' -AllowExit';
@@ -184,56 +212,99 @@ begin
   end;
 end;
 
-function CanLaunchNormally: Boolean;
+function InitializeSetup: Boolean;
+var CheckResult: Integer;
 begin
-  { A runas restart cannot recover the original unelevated token. Use Explorer's shortcut instead. }
-  Result := Committed and not IsAdmin;
+  Result := False;
+  if (RunCoordinator('Identity') <> 0) or (OriginalSid = '') then
+  begin
+    SuppressibleMsgBox(LastCoordMessage, mbError, MB_OK, IDOK);
+    Exit;
+  end;
+  if IsAdminInstallMode then
+  begin
+    CheckResult := RunCoordinator('VerifyOriginalAccount');
+    if CheckResult = 21 then
+    begin
+      SuppressibleMsgBox('授权账户与启动安装的 Windows 账户不同。请使用相同账户授权，或选择“仅为我安装”。', mbError, MB_OK, IDOK);
+      Exit;
+    end;
+    if CheckResult <> 0 then
+    begin
+      SuppressibleMsgBox('无法完成 Windows 账户核对。安装日志：' + ExpandConstant('{log}'), mbError, MB_OK, IDOK);
+      Exit;
+    end;
+  end;
+  Result := True;
 end;
-
-#include "Elevation.iss"
 
 procedure InitializeWizard;
 begin
   CoordinationProgress := CreateOutputMarqueeProgressPage('正在处理安装', '当前步骤完成后将自动继续。');
-  OriginalSid := ExpandConstant('{param:ORIGSID|}');
-  if RunCoordinator('Identity') <> 0 then
-    RaiseException(LastCoordMessage);
+  DataPage := CreateInputDirPage(wpSelectDir, '应用数据目录', '设置数据库与用户数据的位置',
+    '默认使用安装目录旁的独立文件夹。也可以选择其他本地磁盘上的专用目录。', False, '');
+  DataPage.Add('数据库、设置和日志');
 end;
+
+procedure UpdateDataDirectory;
+var AppDirectory, Requested: String;
+begin
+  AppDirectory := ExpandFileName(ExpandConstant('{app}'));
+  if CompareText(AppDirectory, PreviousApp) = 0 then Exit;
+  PreviousApp := AppDirectory;
+  Requested := ExpandConstant('{param:DATADIR|}');
+  if Requested = '' then Requested := Trim(ReadUtf8(AppDirectory + '\user-data-' + OriginalSid + '.path'));
+  if Requested = '' then Requested := AppDirectory + '.Data';
+  DataPage.Values[0] := Requested;
+end;
+
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
+  if CurPageID = DataPage.ID then UpdateDataDirectory;
   if CurPageID = wpReady then
   begin
     WizardForm.ReadyMemo.Lines.Add('');
     WizardForm.ReadyMemo.Lines.Add('安装将退出本目录下的工具箱界面、热点工作进程和 Codex 分析桥接；其他任务未完成时会暂停。先备份程序和安装登记，写入后逐文件核验，失败恢复安装前状态。');
-    WizardForm.ReadyMemo.Lines.Add(LastCoordMessage);
+    WizardForm.ReadyMemo.Lines.Add('应用数据：' + DataPage.Values[0]);
   end;
   if (CurPageID = wpFinished) and Prepared and not Committed then
   begin
     WizardForm.FinishedHeadingLabel.Caption := '更新未完成';
     WizardForm.FinishedLabel.Caption := InstallFailureMessage;
-    WizardForm.RunList.Visible := False;
+  end
+  else if (CurPageID = wpFinished) and Committed then
+  begin
+    WizardForm.FinishedLabel.Caption := '安装已完成。可从开始菜单或桌面快捷方式打开工具箱。';
   end;
-end;
-
-procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
-begin
-  if RestartRequested then begin Cancel := True; Confirm := False; end;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 var CheckResult: Integer;
 begin
   Result := True;
+  if CurPageID = DataPage.ID then
+  begin
+    if Trim(DataPage.Values[0]) = '' then
+    begin
+      Result := False;
+      MsgBox('请选择要保存应用数据的目录。', mbError, MB_OK);
+      Exit;
+    end;
+    if RunWithProgress('InspectData', '正在检查应用数据目录…') <> 0 then
+    begin
+      Result := False;
+      SuppressibleMsgBox(LastCoordMessage, mbError, MB_OK, IDOK);
+    end;
+    Exit;
+  end;
   if CurPageID <> wpSelectDir then Exit;
   CheckResult := RunWithProgress('Inspect', '正在检查安装目录和写入权限…');
   if CheckResult = 0 then Exit;
   Result := False;
   if CheckResult = 10 then
-  begin
-    RestartElevated;
-    Exit;
-  end;
+    LastCoordMessage := LastCoordMessage + #13#10 +
+      '请返回选择当前账户可写的目录，或关闭安装器后重新打开，在开头选择“为所有用户安装”。';
   SuppressibleMsgBox(LastCoordMessage, mbError, MB_OK, IDOK);
 end;
 
@@ -241,7 +312,7 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var MutexName: String;
 begin
   Result := '';
-  if RestartRequested then begin Result := '已转交管理员安装，当前窗口退出。'; Exit; end;
+  UpdateDataDirectory;
   if InstallMutex = 0 then
   begin
     MutexName := 'Global\TunHotspot.Update.' + GetSHA256OfString(Lowercase(ExpandFileName(ExpandConstant('{app}'))));

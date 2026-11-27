@@ -23,7 +23,12 @@ namespace TunHotspot;
 
 public sealed partial class ToolboxWindow : Window
 {
-    private TrayMenuState TrayState()=>new(_settings,_serviceConnected,_adminBusy||_serviceScanRequested||_startupUnavailable,_startupUnavailable?0:_store.Alerts.Count(x=>!x.IsRead),!_startupUnavailable);
+    private TrayMenuState TrayState()
+    {
+        bool ready = !_startupLoading && !_startupUnavailable;
+        return new(_settings, _serviceConnected, !ready || _adminBusy || _serviceScanRequested,
+            ready ? _store.Alerts.Count(x => !x.IsRead) : 0, ready);
+    }
     private void OpenTrayMenu(int x,int y)
     {
         try
@@ -46,7 +51,7 @@ public sealed partial class ToolboxWindow : Window
         if (_exiting) return;
         try
         {
-            if (_startupUnavailable && command is "scan" or "pause") { Show(); Navigate("overview"); return; }
+            if ((_startupLoading || _startupUnavailable) && command is "scan" or "pause") { Show(); Navigate("overview"); return; }
             if(command=="open")Show();else if(command is "alerts" or "settings"){Show();Navigate(command);}
             else if(command=="hotspot"){Show();Navigate("hotspot");}
             else if(command=="configuration"){Show();Navigate("configuration");}
